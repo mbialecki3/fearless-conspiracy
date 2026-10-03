@@ -139,6 +139,39 @@ pub struct GameEvent {
     pub text: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JudgmentChoice {
+    Guilty,
+    Innocent,
+    Abstain,
+}
+
+impl JudgmentChoice {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Guilty => "guilty",
+            Self::Innocent => "innocent",
+            Self::Abstain => "abstain",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Verdict {
+    Convicted,
+    Acquitted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MatchOutcome {
+    InProgress,
+    TownWin,
+    MafiaWin,
+    NoFaction,
+    Draw,
+    Aborted,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameError {
     LobbyFull,
@@ -152,6 +185,17 @@ pub enum GameError {
     InvalidScenario(String),
     WrongRole,
     InvalidText(String),
+    WrongPhase {
+        expected: &'static str,
+        actual: PhaseKind,
+    },
+    StalePhase {
+        supplied: u64,
+        current: u64,
+    },
+    DeadPlayer,
+    InvalidTarget(String),
+    CannotVote(String),
 }
 
 impl fmt::Display for GameError {
@@ -168,6 +212,21 @@ impl fmt::Display for GameError {
             Self::InvalidScenario(reason) => write!(f, "invalid scenario: {reason}"),
             Self::WrongRole => write!(f, "that command is not available to this role"),
             Self::InvalidText(reason) => write!(f, "invalid text: {reason}"),
+            Self::WrongPhase { expected, actual } => {
+                write!(
+                    f,
+                    "command requires {expected}; current phase is {actual:?}"
+                )
+            }
+            Self::StalePhase { supplied, current } => {
+                write!(
+                    f,
+                    "command is for phase {supplied}; current phase is {current}"
+                )
+            }
+            Self::DeadPlayer => write!(f, "dead players cannot perform that action"),
+            Self::InvalidTarget(reason) => write!(f, "invalid target: {reason}"),
+            Self::CannotVote(reason) => write!(f, "cannot vote: {reason}"),
         }
     }
 }
@@ -178,6 +237,12 @@ pub struct Game {
     pub config: GameConfig,
     pub phase: Phase,
     pub players: BTreeMap<PlayerId, PlayerState>,
+    pub nominations: BTreeMap<PlayerId, PlayerId>,
+    pub judgments: BTreeMap<PlayerId, JudgmentChoice>,
+    pub accused: Option<PlayerId>,
+    pub trials_today: u8,
+    pub last_trial_votes: BTreeMap<PlayerId, JudgmentChoice>,
+    pub outcome: MatchOutcome,
     rng: StdRng,
 }
 
@@ -188,6 +253,12 @@ impl Game {
             config,
             phase: Phase::lobby(),
             players: BTreeMap::new(),
+            nominations: BTreeMap::new(),
+            judgments: BTreeMap::new(),
+            accused: None,
+            trials_today: 0,
+            last_trial_votes: BTreeMap::new(),
+            outcome: MatchOutcome::InProgress,
             rng: StdRng::seed_from_u64(seed),
         })
     }
@@ -198,6 +269,12 @@ impl Game {
             config,
             phase: Phase::lobby(),
             players: BTreeMap::new(),
+            nominations: BTreeMap::new(),
+            judgments: BTreeMap::new(),
+            accused: None,
+            trials_today: 0,
+            last_trial_votes: BTreeMap::new(),
+            outcome: MatchOutcome::InProgress,
             rng: StdRng::from_os_rng(),
         })
     }
@@ -340,6 +417,441 @@ impl Game {
         Ok(())
     }
 
+    pub fn advance_phase(&mut self, phase_id: u64) -> Result<Vec<GameEvent>, GameError> {
+        self.ensure_phase_id(phase_id)?;
+        match self.phase.kind {
+            PhaseKind::RoleReveal => {
+                self.move_to(PhaseKind::DayOne, self.phase.day);
+                Ok(vec![self.phase_event(
+                    "Day 1 introductions have begun. No trial is held today.",
+                )])
+            }
+            PhaseKind::DayOne => {
+                self.move_to(PhaseKind::Night, 1);
+                Ok(vec![self.phase_event("Night 1 has begun.")])
+            }
+            PhaseKind::Dawn => {
+                self.move_to(PhaseKind::Discussion, self.phase.day);
+                Ok(vec![self.phase_event("Discussion has begun.")])
+            }
+            PhaseKind::Discussion => {
+                self.nominations.clear();
+                self.trials_today = 0;
+                self.move_to(PhaseKind::Nominations, self.phase.day);
+                Ok(vec![self.phase_event("Nominations are open.")])
+            }
+            PhaseKind::Nominations => {
+                self.begin_night();
+                Ok(vec![
+                    self.phase_event("Nomination time expired. Night has begun."),
+                ])
+            }
+            PhaseKind::Defense => {
+                self.judgments.clear();
+                self.move_to(PhaseKind::Judgment, self.phase.day);
+                Ok(vec![self.phase_event(
+                    "Judgment voting is open; the accused cannot vote.",
+                )])
+            }
+            PhaseKind::LastWords => self.execute_accused(),
+            PhaseKind::Lobby => Err(GameError::MatchNotStarted),
+            PhaseKind::Night => Err(GameError::WrongPhase {
+                expected: "night resolution",
+                actual: self.phase.kind,
+            }),
+            PhaseKind::Judgment => Err(GameError::WrongPhase {
+                expected: "verdict resolution",
+                actual: self.phase.kind,
+            }),
+            PhaseKind::Ended => Err(GameError::MatchAlreadyStarted),
+        }
+    }
+
+    pub fn finish_night_for_test_or_resolver(&mut self) -> Result<GameEvent, GameError> {
+        if self.phase.kind != PhaseKind::Night {
+            return Err(GameError::WrongPhase {
+                expected: "night",
+                actual: self.phase.kind,
+            });
+        }
+        self.move_to(PhaseKind::Dawn, self.phase.day.saturating_add(1));
+        Ok(self.phase_event(&format!("Dawn {} has begun.", self.phase.day)))
+    }
+
+    pub fn nominate(
+        &mut self,
+        actor: PlayerId,
+        target: PlayerId,
+        phase_id: u64,
+    ) -> Result<Vec<GameEvent>, GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Nominations, "nominations")?;
+        self.ensure_living(actor)?;
+        self.ensure_living(target)?;
+        if actor == target {
+            return Err(GameError::CannotVote(
+                "self-nominations are not allowed".into(),
+            ));
+        }
+        let previous = self.nominations.insert(actor, target);
+        let total = self.nomination_count(target);
+        let threshold = self.nomination_threshold();
+        let mut events = vec![GameEvent {
+            recipients: Recipients::All,
+            channel: "public_system",
+            text: match previous {
+                Some(old) if old != target => format!(
+                    "{actor} changed their nomination from {old} to {target} ({total}/{threshold})."
+                ),
+                _ => format!("{actor} nominated {target} ({total}/{threshold})."),
+            },
+        }];
+        if total >= threshold {
+            self.accused = Some(target);
+            self.move_to(PhaseKind::Defense, self.phase.day);
+            events.push(self.phase_event(&format!(
+                "{target} is on trial and may now speak in defense."
+            )));
+        }
+        Ok(events)
+    }
+
+    pub fn withdraw_nomination(
+        &mut self,
+        actor: PlayerId,
+        phase_id: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Nominations, "nominations")?;
+        self.ensure_living(actor)?;
+        let old = self
+            .nominations
+            .remove(&actor)
+            .ok_or_else(|| GameError::CannotVote("no active nomination to withdraw".into()))?;
+        Ok(GameEvent {
+            recipients: Recipients::All,
+            channel: "public_system",
+            text: format!("{actor} withdrew their nomination of {old}."),
+        })
+    }
+
+    pub fn judge(
+        &mut self,
+        actor: PlayerId,
+        choice: JudgmentChoice,
+        phase_id: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Judgment, "judgment")?;
+        self.ensure_living(actor)?;
+        if self.accused == Some(actor) {
+            return Err(GameError::CannotVote("the accused cannot vote".into()));
+        }
+        self.judgments.insert(actor, choice);
+        Ok(GameEvent {
+            recipients: Recipients::only(actor),
+            channel: "private_system",
+            text: format!("Judgment choice set to {}.", choice.label()),
+        })
+    }
+
+    pub fn resolve_judgment(
+        &mut self,
+        phase_id: u64,
+    ) -> Result<(Verdict, Vec<GameEvent>), GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Judgment, "judgment")?;
+        let accused = self
+            .accused
+            .ok_or_else(|| GameError::CannotVote("judgment has no accused player".into()))?;
+        let mut guilty = 0;
+        let mut innocent = 0;
+        let mut published = Vec::new();
+        self.last_trial_votes.clear();
+        for player in self
+            .players
+            .values()
+            .filter(|player| player.alive && player.id != accused)
+        {
+            let choice = self
+                .judgments
+                .get(&player.id)
+                .copied()
+                .unwrap_or(JudgmentChoice::Abstain);
+            self.last_trial_votes.insert(player.id, choice);
+            match choice {
+                JudgmentChoice::Guilty => guilty += 1,
+                JudgmentChoice::Innocent => innocent += 1,
+                JudgmentChoice::Abstain => {}
+            }
+            published.push(format!("{}: {}", player.id, choice.label()));
+        }
+        let verdict = if guilty > innocent {
+            Verdict::Convicted
+        } else {
+            Verdict::Acquitted
+        };
+        let mut events = vec![GameEvent {
+            recipients: Recipients::All,
+            channel: "public_system",
+            text: format!(
+                "Judgment votes: {}. Totals: {guilty} guilty, {innocent} innocent. Verdict: {:?}.",
+                published.join(", "),
+                verdict
+            ),
+        }];
+        self.trials_today += 1;
+        match verdict {
+            Verdict::Convicted => {
+                self.move_to(PhaseKind::LastWords, self.phase.day);
+                events.push(self.phase_event(&format!("{accused} may speak their last words.")));
+            }
+            Verdict::Acquitted => {
+                self.accused = None;
+                self.nominations.clear();
+                self.judgments.clear();
+                if self.trials_today >= 3 {
+                    self.begin_night();
+                    events.push(self.phase_event("The trial limit was reached. Night has begun."));
+                } else {
+                    self.move_to(PhaseKind::Nominations, self.phase.day);
+                    events.push(self.phase_event("The accused was acquitted. Nominations resume."));
+                }
+            }
+        }
+        Ok((verdict, events))
+    }
+
+    pub fn say(&self, actor: PlayerId, text: &str, phase_id: u64) -> Result<GameEvent, GameError> {
+        self.ensure_phase_id(phase_id)?;
+        validate_player_text(text, MAX_CHAT_BYTES)?;
+        self.ensure_living(actor)?;
+        let allowed = match self.phase.kind {
+            PhaseKind::DayOne | PhaseKind::Discussion | PhaseKind::Nominations => true,
+            PhaseKind::Defense => self.accused == Some(actor),
+            PhaseKind::LastWords => self.accused == Some(actor),
+            _ => false,
+        };
+        if !allowed {
+            return Err(GameError::WrongPhase {
+                expected: "an eligible public speaking phase",
+                actual: self.phase.kind,
+            });
+        }
+        Ok(GameEvent {
+            recipients: Recipients::All,
+            channel: "public",
+            text: format!("{actor} {}: {text}", self.player(actor)?.name),
+        })
+    }
+
+    pub fn whisper(
+        &self,
+        actor: PlayerId,
+        target: PlayerId,
+        text: &str,
+        phase_id: u64,
+    ) -> Result<Vec<GameEvent>, GameError> {
+        self.ensure_phase_id(phase_id)?;
+        validate_player_text(text, MAX_CHAT_BYTES)?;
+        self.ensure_living(actor)?;
+        self.ensure_living(target)?;
+        if actor == target {
+            return Err(GameError::InvalidTarget(
+                "cannot whisper to yourself".into(),
+            ));
+        }
+        if !matches!(
+            self.phase.kind,
+            PhaseKind::DayOne | PhaseKind::Discussion | PhaseKind::Nominations
+        ) {
+            return Err(GameError::WrongPhase {
+                expected: "introductions, discussion, or nominations",
+                actual: self.phase.kind,
+            });
+        }
+        Ok(vec![
+            GameEvent {
+                recipients: Recipients::Players(BTreeSet::from([actor, target])),
+                channel: "whisper",
+                text: format!("{actor} -> {target}: {text}"),
+            },
+            GameEvent {
+                recipients: Recipients::All,
+                channel: "public_system",
+                text: format!("{actor} whispered to {target}."),
+            },
+        ])
+    }
+
+    pub fn mafia_chat(
+        &self,
+        actor: PlayerId,
+        text: &str,
+        phase_id: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Night, "night")?;
+        validate_player_text(text, MAX_CHAT_BYTES)?;
+        self.ensure_living(actor)?;
+        if self.player(actor)?.faction != Some(Faction::Mafia) {
+            return Err(GameError::WrongRole);
+        }
+        let recipients = self
+            .players
+            .values()
+            .filter(|player| player.alive && player.faction == Some(Faction::Mafia))
+            .map(|player| player.id)
+            .collect();
+        Ok(GameEvent {
+            recipients: Recipients::Players(recipients),
+            channel: "mafia",
+            text: format!("{actor}: {text}"),
+        })
+    }
+
+    pub fn dead_chat(
+        &self,
+        actor: PlayerId,
+        text: &str,
+        phase_id: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.ensure_phase_id(phase_id)?;
+        validate_player_text(text, MAX_CHAT_BYTES)?;
+        if self.player(actor)?.alive {
+            return Err(GameError::WrongPhase {
+                expected: "dead chat after death",
+                actual: self.phase.kind,
+            });
+        }
+        let recipients = self
+            .players
+            .values()
+            .filter(|player| !player.alive)
+            .map(|player| player.id)
+            .collect();
+        Ok(GameEvent {
+            recipients: Recipients::Players(recipients),
+            channel: "dead",
+            text: format!("{actor}: {text}"),
+        })
+    }
+
+    pub fn evaluate_victory(&mut self) -> MatchOutcome {
+        let town = self
+            .players
+            .values()
+            .filter(|player| player.alive && player.faction == Some(Faction::Town))
+            .count();
+        let mafia = self
+            .players
+            .values()
+            .filter(|player| player.alive && player.faction == Some(Faction::Mafia))
+            .count();
+        self.outcome = match (town, mafia) {
+            (0, 0) => MatchOutcome::NoFaction,
+            (0, _) => MatchOutcome::MafiaWin,
+            (_, 0) => MatchOutcome::TownWin,
+            _ => MatchOutcome::InProgress,
+        };
+        if self.outcome != MatchOutcome::InProgress {
+            self.move_to(PhaseKind::Ended, self.phase.day);
+        }
+        self.outcome
+    }
+
+    pub fn nomination_threshold(&self) -> usize {
+        self.players.values().filter(|player| player.alive).count() / 2 + 1
+    }
+
+    fn execute_accused(&mut self) -> Result<Vec<GameEvent>, GameError> {
+        let accused = self
+            .accused
+            .take()
+            .ok_or_else(|| GameError::CannotVote("there is no convicted player".into()))?;
+        let player = self.player_mut(accused)?;
+        player.alive = false;
+        if player.current_role == Some(Role::Jester) {
+            player.jester_won = true;
+        }
+        let role = player.role()?;
+        let name = player.name.clone();
+        let will = player.will.clone();
+        let mut events = vec![GameEvent {
+            recipients: Recipients::All,
+            channel: "public_system",
+            text: format!(
+                "{accused} {name} was publicly executed. Role: {}. Will: {}",
+                role.display_name(),
+                if will.is_empty() { "(empty)" } else { &will }
+            ),
+        }];
+        if self.evaluate_victory() == MatchOutcome::InProgress {
+            self.begin_night();
+            events.push(self.phase_event("The public execution is complete. Night has begun."));
+        }
+        Ok(events)
+    }
+
+    fn begin_night(&mut self) {
+        self.nominations.clear();
+        self.judgments.clear();
+        self.accused = None;
+        self.move_to(PhaseKind::Night, self.phase.day);
+    }
+
+    fn nomination_count(&self, target: PlayerId) -> usize {
+        self.nominations
+            .values()
+            .filter(|vote| **vote == target)
+            .count()
+    }
+
+    fn ensure_living(&self, id: PlayerId) -> Result<(), GameError> {
+        if self.player(id)?.alive {
+            Ok(())
+        } else {
+            Err(GameError::DeadPlayer)
+        }
+    }
+
+    fn ensure_phase_id(&self, phase_id: u64) -> Result<(), GameError> {
+        if phase_id == self.phase.id {
+            Ok(())
+        } else {
+            Err(GameError::StalePhase {
+                supplied: phase_id,
+                current: self.phase.id,
+            })
+        }
+    }
+
+    fn ensure_phase(
+        &self,
+        phase_id: u64,
+        kind: PhaseKind,
+        label: &'static str,
+    ) -> Result<(), GameError> {
+        self.ensure_phase_id(phase_id)?;
+        if self.phase.kind == kind {
+            Ok(())
+        } else {
+            Err(GameError::WrongPhase {
+                expected: label,
+                actual: self.phase.kind,
+            })
+        }
+    }
+
+    fn move_to(&mut self, kind: PhaseKind, day: u8) {
+        self.phase.id += 1;
+        self.phase.kind = kind;
+        self.phase.day = day;
+    }
+
+    fn phase_event(&self, text: &str) -> GameEvent {
+        GameEvent {
+            recipients: Recipients::All,
+            channel: "public_system",
+            text: format!("[phase {} · {:?}] {text}", self.phase.id, self.phase.kind),
+        }
+    }
+
     fn role_reveal_events(&self) -> Vec<GameEvent> {
         let mafia: Vec<_> = self
             .players
@@ -461,6 +973,22 @@ mod tests {
         game
     }
 
+    fn nomination_game() -> Game {
+        let mut game = ready_demo_game();
+        game.start().unwrap();
+        let phase = game.phase.id;
+        game.advance_phase(phase).unwrap();
+        let phase = game.phase.id;
+        game.advance_phase(phase).unwrap();
+        game.finish_night_for_test_or_resolver().unwrap();
+        let phase = game.phase.id;
+        game.advance_phase(phase).unwrap();
+        let phase = game.phase.id;
+        game.advance_phase(phase).unwrap();
+        assert_eq!(game.phase.kind, PhaseKind::Nominations);
+        game
+    }
+
     #[test]
     fn all_presets_have_unique_roles_and_expected_sizes() {
         for (preset, size) in [
@@ -558,5 +1086,134 @@ mod tests {
             game.set_will(PlayerId(1), &"x".repeat(MAX_WILL_BYTES + 1)),
             Err(GameError::InvalidText(_))
         ));
+    }
+
+    #[test]
+    fn phase_ids_reject_late_commands_and_day_one_has_no_nominations() {
+        let mut game = ready_demo_game();
+        game.start().unwrap();
+        let role_reveal = game.phase.id;
+        game.advance_phase(role_reveal).unwrap();
+        assert_eq!(game.phase.kind, PhaseKind::DayOne);
+        assert!(matches!(
+            game.nominate(PlayerId(1), PlayerId(2), game.phase.id),
+            Err(GameError::WrongPhase { .. })
+        ));
+        assert!(matches!(
+            game.say(PlayerId(1), "late", role_reveal),
+            Err(GameError::StalePhase { .. })
+        ));
+    }
+
+    #[test]
+    fn nomination_majority_trial_and_private_judgment_reach_execution() {
+        let mut game = nomination_game();
+        game.set_will(PlayerId(4), "I claim Doctor").unwrap();
+        let phase = game.phase.id;
+        game.nominate(PlayerId(1), PlayerId(4), phase).unwrap();
+        game.nominate(PlayerId(2), PlayerId(4), phase).unwrap();
+        let events = game.nominate(PlayerId(3), PlayerId(4), phase).unwrap();
+        assert_eq!(game.nomination_threshold(), 3);
+        assert_eq!(game.phase.kind, PhaseKind::Defense);
+        assert!(events.iter().any(|event| event.text.contains("on trial")));
+        assert!(
+            game.say(PlayerId(4), "I am innocent", game.phase.id)
+                .is_ok()
+        );
+        assert!(game.say(PlayerId(1), "interrupt", game.phase.id).is_err());
+
+        game.advance_phase(game.phase.id).unwrap();
+        let phase = game.phase.id;
+        let acknowledgment = game
+            .judge(PlayerId(1), JudgmentChoice::Guilty, phase)
+            .unwrap();
+        assert_eq!(acknowledgment.recipients, Recipients::only(PlayerId(1)));
+        game.judge(PlayerId(2), JudgmentChoice::Guilty, phase)
+            .unwrap();
+        game.judge(PlayerId(3), JudgmentChoice::Innocent, phase)
+            .unwrap();
+        assert!(
+            game.judge(PlayerId(4), JudgmentChoice::Guilty, phase)
+                .is_err()
+        );
+        let (verdict, events) = game.resolve_judgment(phase).unwrap();
+        assert_eq!(verdict, Verdict::Convicted);
+        assert!(events[0].text.contains("#5: abstain"));
+        assert_eq!(game.phase.kind, PhaseKind::LastWords);
+
+        let events = game.advance_phase(game.phase.id).unwrap();
+        assert!(!game.player(PlayerId(4)).unwrap().alive);
+        assert!(events[0].text.contains("I claim Doctor"));
+        assert_eq!(game.outcome, MatchOutcome::TownWin);
+        assert_eq!(game.phase.kind, PhaseKind::Ended);
+    }
+
+    #[test]
+    fn tied_judgment_acquits_and_clears_nominations() {
+        let mut game = nomination_game();
+        let phase = game.phase.id;
+        for voter in [PlayerId(1), PlayerId(2), PlayerId(3)] {
+            game.nominate(voter, PlayerId(4), phase).unwrap();
+        }
+        game.advance_phase(game.phase.id).unwrap();
+        let phase = game.phase.id;
+        game.judge(PlayerId(1), JudgmentChoice::Guilty, phase)
+            .unwrap();
+        game.judge(PlayerId(2), JudgmentChoice::Innocent, phase)
+            .unwrap();
+        let (verdict, _) = game.resolve_judgment(phase).unwrap();
+        assert_eq!(verdict, Verdict::Acquitted);
+        assert_eq!(game.phase.kind, PhaseKind::Nominations);
+        assert!(game.nominations.is_empty());
+        assert_eq!(game.trials_today, 1);
+    }
+
+    #[test]
+    fn whisper_payload_is_only_addressed_to_participants() {
+        let mut game = ready_demo_game();
+        game.start().unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        let events = game
+            .whisper(PlayerId(1), PlayerId(2), "secret", game.phase.id)
+            .unwrap();
+        assert!(events[0].recipients.contains(PlayerId(1)));
+        assert!(events[0].recipients.contains(PlayerId(2)));
+        assert!(!events[0].recipients.contains(PlayerId(3)));
+        assert!(!events[1].text.contains("secret"));
+    }
+
+    #[test]
+    fn mafia_chat_recipients_exclude_town_and_jester() {
+        let roles = Preset::Standard7.roles().to_vec();
+        let mut game = Game::with_seed(GameConfig::scenario(roles), 1).unwrap();
+        for number in 1..=7 {
+            let id = game.join(2000 + number, &format!("P{number}")).unwrap();
+            game.toggle_ready(id).unwrap();
+        }
+        game.start().unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        let event = game
+            .mafia_chat(PlayerId(5), "target seven", game.phase.id)
+            .unwrap();
+        assert!(event.recipients.contains(PlayerId(5)));
+        assert!(event.recipients.contains(PlayerId(6)));
+        assert!(!event.recipients.contains(PlayerId(1)));
+        assert!(!event.recipients.contains(PlayerId(7)));
+    }
+
+    #[test]
+    fn mafia_numeric_superiority_does_not_end_match_early() {
+        let roles = Preset::Standard7.roles().to_vec();
+        let mut game = Game::with_seed(GameConfig::scenario(roles), 1).unwrap();
+        for number in 1..=7 {
+            let id = game.join(3000 + number, &format!("P{number}")).unwrap();
+            game.toggle_ready(id).unwrap();
+        }
+        game.start().unwrap();
+        for id in [PlayerId(1), PlayerId(2), PlayerId(3)] {
+            game.player_mut(id).unwrap().alive = false;
+        }
+        assert_eq!(game.evaluate_victory(), MatchOutcome::InProgress);
     }
 }
