@@ -49,6 +49,11 @@ Run `cargo test` to exercise framing under partial reads and other malformed
 input. See [`docs/ipc-architecture.md`](docs/ipc-architecture.md) for the
 transport lifecycle and responsibility boundary.
 
+The permanent multi-client communication demonstration is provided by
+`ipc-demo-server` and `ipc-demo-client`. Follow
+[`docs/multi-user-demo.md`](docs/multi-user-demo.md) to exercise authenticated
+private, group, and broadcast delivery with three distinct Linux users.
+
 Runtime account and socket-directory setup will be documented before the
 multi-user integration milestone. Never put account passwords in this
 repository.
