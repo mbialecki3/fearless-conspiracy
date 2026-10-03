@@ -82,6 +82,29 @@ immunity, one Mafia attack, persistent frames, simultaneous lethal effects,
 Jester haunt, and post-death-batch promotion. `cargo test` contains deterministic
 cases for every worked scenario and role interaction.
 
+Interactive clients use `rustyline`'s external printer so an incoming socket
+event does not destroy a partially typed command. Pass `--plain` for redirected
+input and automated transcripts.
+
+## Source map and verification
+
+- `src/comm.rs`: every socket operation, JSON framing, peer credentials,
+  connection threads, deadlines, bounded queues, and fan-out.
+- `src/game.rs`: authoritative match/player/phase state, chat permissions,
+  trials, wills, forfeits, victory, and personal outcomes.
+- `src/roles.rs`: role attributes, intentions, visits, attacks, deterministic
+  night resolution, and promotions.
+- `src/command.rs`: terminal command parsing and dispatch into the pure engine.
+- `src/rate_limit.rs`: rolling command/chat limits and replay protection.
+- `src/bin/salem-server.rs` and `salem-client.rs`: process wiring and terminal UI.
+
+Run `scripts/check.sh` for the complete compiler/test gate and
+`scripts/smoke-game.sh` for a five-client end-to-end process test. The detailed
+coverage map is in [`docs/testing.md`](docs/testing.md). Peer feedback and the
+PDF still require real classmates and screenshots; templates are provided in
+[`docs/peer-feedback-template.md`](docs/peer-feedback-template.md) and
+[`docs/report-outline.md`](docs/report-outline.md) without fabricated evidence.
+
 Runtime account and socket-directory setup will be documented before the
 multi-user integration milestone. Never put account passwords in this
 repository.
