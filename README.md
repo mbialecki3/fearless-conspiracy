@@ -54,6 +54,27 @@ The permanent multi-client communication demonstration is provided by
 [`docs/multi-user-demo.md`](docs/multi-user-demo.md) to exercise authenticated
 private, group, and broadcast delivery with three distinct Linux users.
 
+## Run the game
+
+The default is a timed, randomized Demo 5 match on the protected runtime
+socket:
+
+```sh
+sudo -u salem_host salem-server /run/terminal-salem/game.sock --preset demo5
+sudo -u salem_p1 salem-client /run/terminal-salem/game.sock Alice
+```
+
+Start one client per distinct player account, then enter `/ready` in each.
+Available presets are `demo5`, `standard7`, `standard8`, and `full9`. Add
+`--scenario` to assign roles in the public preset order for a visibly labeled
+test/screenshot run. `--fast --allow-same-uid` is only for automated local
+smoke tests; it shortens phase timers and disables the separate-UID check.
+
+The client attaches the latest server-issued phase ID to every state-changing
+command. The server rejects stale commands, routes hidden events only to their
+authorized sockets, and advances authoritative timers without waiting for idle
+players. Type `/help` for the command summary.
+
 Runtime account and socket-directory setup will be documented before the
 multi-user integration milestone. Never put account passwords in this
 repository.

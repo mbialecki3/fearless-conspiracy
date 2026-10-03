@@ -852,6 +852,67 @@ impl Game {
         crate::roles::resolve_night(self)
     }
 
+    pub fn mark_disconnected(&mut self, id: PlayerId) -> Result<(), GameError> {
+        let in_game = self.phase.kind != PhaseKind::Lobby;
+        let player = self.player_mut(id)?;
+        player.connected = false;
+        if in_game && player.alive {
+            player.pending_forfeit = true;
+            self.intents.remove(&id);
+        }
+        Ok(())
+    }
+
+    pub fn apply_pending_forfeits(&mut self) -> Vec<GameEvent> {
+        let forfeits: Vec<_> = self
+            .players
+            .values()
+            .filter(|player| player.alive && player.pending_forfeit)
+            .map(|player| player.id)
+            .collect();
+        let mut events = Vec::new();
+        for id in forfeits {
+            if let Ok(player) = self.player_mut(id) {
+                player.alive = false;
+                player.pending_forfeit = false;
+                player.forfeited = true;
+                let role = player.current_role;
+                let name = player.name.clone();
+                let will = player.will.clone();
+                events.push(GameEvent {
+                    recipients: Recipients::All,
+                    channel: "public_system",
+                    text: format!(
+                        "{id} {name} forfeited. Role: {}. Will: {}",
+                        role.map(Role::display_name).unwrap_or("unassigned"),
+                        if will.is_empty() { "(empty)" } else { &will }
+                    ),
+                });
+            }
+            self.nominations.remove(&id);
+            self.nominations.retain(|_, target| *target != id);
+            self.judgments.remove(&id);
+            self.intents.remove(&id);
+            if self.accused == Some(id) {
+                self.accused = None;
+                self.nominations.clear();
+                if matches!(
+                    self.phase.kind,
+                    PhaseKind::Defense | PhaseKind::Judgment | PhaseKind::LastWords
+                ) {
+                    self.move_to(PhaseKind::Nominations, self.phase.day);
+                    events.push(self.phase_event(
+                        "The accused forfeited; the trial was canceled and nominations resume.",
+                    ));
+                }
+            }
+        }
+        if !events.is_empty() {
+            self.evaluate_victory();
+        }
+        events
+    }
+
     pub fn evaluate_victory(&mut self) -> MatchOutcome {
         if self.pending_haunt.as_ref().is_some_and(|haunt| {
             haunt

@@ -50,6 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     peer,
                     ServerMessage::Event {
                         sequence,
+                        phase_id: 0,
                         channel: "private".into(),
                         text: format!("Your authenticated transport peer ID is {}.", peer.0),
                     },
@@ -57,6 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 sequence += 1;
                 transport.broadcast(ServerMessage::Event {
                     sequence,
+                    phase_id: 0,
                     channel: "public".into(),
                     text: format!("{name} joined as peer {}.", peer.0),
                 });
@@ -92,6 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("peer {} ({name}) disconnected: {reason}", peer.0);
                 transport.broadcast(ServerMessage::Event {
                     sequence,
+                    phase_id: 0,
                     channel: "public".into(),
                     text: format!("{name} disconnected."),
                 });
@@ -166,6 +169,7 @@ fn parse_peer(target: &str, names: &HashMap<PeerId, String>) -> Result<PeerId, S
 fn event(sequence: u64, channel: &str, sender: PeerId, body: &str) -> ServerMessage {
     ServerMessage::Event {
         sequence,
+        phase_id: 0,
         channel: channel.into(),
         text: format!("peer {}: {body}", sender.0),
     }
