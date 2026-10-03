@@ -75,6 +75,13 @@ command. The server rejects stale commands, routes hidden events only to their
 authorized sockets, and advances authoritative timers without waiting for idle
 players. Type `/help` for the command summary.
 
+All nine planned roles are implemented: Sheriff, Doctor, Lookout, Tavern
+Keeper, Jailor, Godfather, Mafioso, Framer, and Jester. Night resolution follows
+the frozen-snapshot pipeline in `plan.md`, including jail access, block
+immunity, one Mafia attack, persistent frames, simultaneous lethal effects,
+Jester haunt, and post-death-batch promotion. `cargo test` contains deterministic
+cases for every worked scenario and role interaction.
+
 Runtime account and socket-directory setup will be documented before the
 multi-user integration milestone. Never put account passwords in this
 repository.

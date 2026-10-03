@@ -247,6 +247,9 @@ pub struct Game {
     pub pending_haunt: Option<HauntState>,
     pub completed_nights: u8,
     pub deathless_cycles: u8,
+    pub frames: BTreeSet<PlayerId>,
+    pub jail_selection: Option<PlayerId>,
+    pub jailed: Option<(PlayerId, PlayerId)>,
     pub(crate) rng: StdRng,
 }
 
@@ -267,6 +270,9 @@ impl Game {
             pending_haunt: None,
             completed_nights: 0,
             deathless_cycles: 0,
+            frames: BTreeSet::new(),
+            jail_selection: None,
+            jailed: None,
             rng: StdRng::seed_from_u64(seed),
         })
     }
@@ -287,6 +293,9 @@ impl Game {
             pending_haunt: None,
             completed_nights: 0,
             deathless_cycles: 0,
+            frames: BTreeSet::new(),
+            jail_selection: None,
+            jailed: None,
             rng: StdRng::from_os_rng(),
         })
     }
@@ -439,8 +448,9 @@ impl Game {
                 )])
             }
             PhaseKind::DayOne => {
-                self.move_to(PhaseKind::Night, 1);
-                Ok(vec![self.phase_event("Night 1 has begun.")])
+                let mut events = self.begin_night();
+                events.insert(0, self.phase_event("Night 1 has begun."));
+                Ok(events)
             }
             PhaseKind::Dawn => {
                 self.move_to(PhaseKind::Discussion, self.phase.day);
@@ -453,10 +463,12 @@ impl Game {
                 Ok(vec![self.phase_event("Nominations are open.")])
             }
             PhaseKind::Nominations => {
-                self.begin_night();
-                Ok(vec![
+                let mut events = self.begin_night();
+                events.insert(
+                    0,
                     self.phase_event("Nomination time expired. Night has begun."),
-                ])
+                );
+                Ok(events)
             }
             PhaseKind::Defense => {
                 self.judgments.clear();
@@ -619,7 +631,7 @@ impl Game {
                 self.nominations.clear();
                 self.judgments.clear();
                 if self.trials_today >= 3 {
-                    self.begin_night();
+                    events.extend(self.begin_night());
                     events.push(self.phase_event("The trial limit was reached. Night has begun."));
                 } else {
                     self.move_to(PhaseKind::Nominations, self.phase.day);
@@ -704,6 +716,12 @@ impl Game {
         if self.player(actor)?.faction != Some(Faction::Mafia) {
             return Err(GameError::WrongRole);
         }
+        if self.jailed.is_some_and(|(_, prisoner)| prisoner == actor) {
+            return Err(GameError::WrongPhase {
+                expected: "Mafia night chat while not jailed",
+                actual: self.phase.kind,
+            });
+        }
         let recipients = self
             .players
             .values()
@@ -714,6 +732,71 @@ impl Game {
             recipients: Recipients::Players(recipients),
             channel: "mafia",
             text: format!("{actor}: {text}"),
+        })
+    }
+
+    pub fn select_jail(
+        &mut self,
+        actor: PlayerId,
+        target: PlayerId,
+        phase_id: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.ensure_phase_id(phase_id)?;
+        self.ensure_living(actor)?;
+        self.ensure_living(target)?;
+        if self.player(actor)?.role()? != Role::Jailor {
+            return Err(GameError::WrongRole);
+        }
+        if actor == target {
+            return Err(GameError::InvalidTarget(
+                "the Jailor cannot jail themself".into(),
+            ));
+        }
+        if !matches!(
+            self.phase.kind,
+            PhaseKind::DayOne
+                | PhaseKind::Discussion
+                | PhaseKind::Nominations
+                | PhaseKind::Defense
+                | PhaseKind::Judgment
+                | PhaseKind::LastWords
+        ) {
+            return Err(GameError::WrongPhase {
+                expected: "an eligible daytime phase",
+                actual: self.phase.kind,
+            });
+        }
+        self.jail_selection = Some(target);
+        Ok(GameEvent {
+            recipients: Recipients::only(actor),
+            channel: "private_system",
+            text: format!("You will jail {target} tonight if they remain alive."),
+        })
+    }
+
+    pub fn jail_chat(
+        &self,
+        actor: PlayerId,
+        text: &str,
+        phase_id: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Night, "night")?;
+        validate_player_text(text, MAX_CHAT_BYTES)?;
+        let (jailor, prisoner) = self.jailed.ok_or(GameError::WrongPhase {
+            expected: "an active jail conversation",
+            actual: self.phase.kind,
+        })?;
+        if actor != jailor && actor != prisoner {
+            return Err(GameError::WrongRole);
+        }
+        Ok(GameEvent {
+            recipients: Recipients::Players(BTreeSet::from([jailor, prisoner])),
+            channel: "jail",
+            text: if actor == jailor {
+                format!("Jailor: {text}")
+            } else {
+                format!("{prisoner}: {text}")
+            },
         })
     }
 
@@ -755,6 +838,12 @@ impl Game {
         let is_haunt = matches!(intent, NightIntent::Haunt(_));
         if !is_haunt {
             self.ensure_living(actor)?;
+            if self.jailed.is_some_and(|(_, prisoner)| prisoner == actor) {
+                return Err(GameError::WrongPhase {
+                    expected: "night action while not jailed",
+                    actual: self.phase.kind,
+                });
+            }
         }
         let matches_role = matches!(
             (role, intent),
@@ -769,6 +858,24 @@ impl Game {
         );
         if !matches_role {
             return Err(GameError::WrongRole);
+        }
+        if matches!(intent, NightIntent::Execute | NightIntent::Spare) {
+            let (jailor, _) = self
+                .jailed
+                .ok_or_else(|| GameError::InvalidTarget("there is no active prisoner".into()))?;
+            if jailor != actor {
+                return Err(GameError::WrongRole);
+            }
+            if intent == NightIntent::Execute {
+                if self.phase.day == 1 {
+                    return Err(GameError::InvalidTarget(
+                        "execution is not allowed on Night 1".into(),
+                    ));
+                }
+                if self.player(actor)?.executions_remaining == 0 {
+                    return Err(GameError::InvalidTarget("no executions remain".into()));
+                }
+            }
         }
         if let Some(target) = intent.target() {
             self.ensure_living(target)?;
@@ -825,6 +932,19 @@ impl Game {
                 text: format!("{actor} updated their {:?} selection.", role),
             });
         }
+        if matches!(intent, NightIntent::Execute | NightIntent::Spare)
+            && let Some((_, prisoner)) = self.jailed
+        {
+            events.push(GameEvent {
+                recipients: Recipients::only(prisoner),
+                channel: "jail",
+                text: if intent == NightIntent::Execute {
+                    "The Jailor selected execution.".into()
+                } else {
+                    "The Jailor selected spare.".into()
+                },
+            });
+        }
         Ok(events)
     }
 
@@ -834,11 +954,21 @@ impl Game {
         phase_id: u64,
     ) -> Result<GameEvent, GameError> {
         self.ensure_phase(phase_id, PhaseKind::Night, "night")?;
-        self.intents.remove(&actor);
+        let jailor_spared = self.player(actor)?.current_role == Some(Role::Jailor)
+            && self.jailed.is_some_and(|(jailor, _)| jailor == actor);
+        if jailor_spared {
+            self.intents.insert(actor, NightIntent::Spare);
+        } else {
+            self.intents.remove(&actor);
+        }
         Ok(GameEvent {
             recipients: Recipients::only(actor),
             channel: "private_system",
-            text: "Night choice cleared.".into(),
+            text: if jailor_spared {
+                "Execution canceled; the prisoner will be spared.".into()
+            } else {
+                "Night choice cleared.".into()
+            },
         })
     }
 
@@ -986,17 +1116,61 @@ impl Game {
             ),
         }];
         if self.evaluate_victory() == MatchOutcome::InProgress {
-            self.begin_night();
+            events.extend(self.begin_night());
             events.push(self.phase_event("The public execution is complete. Night has begun."));
         }
         Ok(events)
     }
 
-    pub(crate) fn begin_night(&mut self) {
+    pub(crate) fn begin_night(&mut self) -> Vec<GameEvent> {
         self.nominations.clear();
         self.judgments.clear();
         self.accused = None;
         self.move_to(PhaseKind::Night, self.phase.day);
+        self.jailed = None;
+        let jailor = self
+            .players
+            .values()
+            .find(|player| player.alive && player.current_role == Some(Role::Jailor))
+            .map(|player| player.id);
+        let prisoner = self
+            .jail_selection
+            .filter(|target| self.players.get(target).is_some_and(|player| player.alive));
+        let (Some(jailor), Some(prisoner)) = (jailor, prisoner) else {
+            return Vec::new();
+        };
+        self.jailed = Some((jailor, prisoner));
+        let mut events = vec![
+            GameEvent {
+                recipients: Recipients::only(jailor),
+                channel: "private_system",
+                text: format!("You jailed {prisoner}. Use /execute or /spare."),
+            },
+            GameEvent {
+                recipients: Recipients::only(prisoner),
+                channel: "private_system",
+                text:
+                    "You were jailed. Your ordinary ability is suppressed; use /jailchat to speak."
+                        .into(),
+            },
+        ];
+        if self
+            .player(prisoner)
+            .is_ok_and(|player| player.faction == Some(Faction::Mafia))
+        {
+            let mafia = self
+                .players
+                .values()
+                .filter(|player| player.alive && player.faction == Some(Faction::Mafia))
+                .map(|player| player.id)
+                .collect();
+            events.push(GameEvent {
+                recipients: Recipients::Players(mafia),
+                channel: "mafia_system",
+                text: format!("Mafia teammate {prisoner} was jailed and may listen but not reply."),
+            });
+        }
+        events
     }
 
     fn nomination_count(&self, target: PlayerId) -> usize {
@@ -1419,5 +1593,62 @@ mod tests {
             game.player_mut(id).unwrap().alive = false;
         }
         assert_eq!(game.evaluate_victory(), MatchOutcome::InProgress);
+    }
+
+    #[test]
+    fn jail_chat_omits_jailor_identity_and_jailed_mafia_can_only_listen() {
+        let roles = Preset::Full9.roles().to_vec();
+        let mut game = Game::with_seed(GameConfig::scenario(roles), 4).unwrap();
+        for number in 1..=9 {
+            let id = game.join(5_000 + number, &format!("P{number}")).unwrap();
+            game.toggle_ready(id).unwrap();
+        }
+        game.start().unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        game.select_jail(PlayerId(5), PlayerId(8), game.phase.id)
+            .unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        let jail_message = game
+            .jail_chat(PlayerId(5), "state your role", game.phase.id)
+            .unwrap();
+        assert!(!jail_message.text.contains("#5"));
+        assert_eq!(
+            jail_message.recipients,
+            Recipients::Players(BTreeSet::from([PlayerId(5), PlayerId(8)]))
+        );
+        let mafia_message = game
+            .mafia_chat(PlayerId(6), "Framer can hear this", game.phase.id)
+            .unwrap();
+        assert!(mafia_message.recipients.contains(PlayerId(8)));
+        assert!(
+            game.mafia_chat(PlayerId(8), "I should not send", game.phase.id)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn jester_public_execution_earns_win_and_defers_faction_result_for_haunt() {
+        let mut game = nomination_game();
+        let phase = game.phase.id;
+        for voter in [PlayerId(1), PlayerId(2), PlayerId(3)] {
+            game.nominate(voter, PlayerId(5), phase).unwrap();
+        }
+        game.advance_phase(game.phase.id).unwrap();
+        let phase = game.phase.id;
+        game.judge(PlayerId(1), JudgmentChoice::Guilty, phase)
+            .unwrap();
+        game.judge(PlayerId(2), JudgmentChoice::Innocent, phase)
+            .unwrap();
+        game.judge(PlayerId(3), JudgmentChoice::Guilty, phase)
+            .unwrap();
+        game.resolve_judgment(phase).unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        assert!(game.player(PlayerId(5)).unwrap().jester_won);
+        let haunt = game.pending_haunt.as_ref().unwrap();
+        assert!(haunt.eligible.contains(&PlayerId(1)));
+        assert!(!haunt.eligible.contains(&PlayerId(2)));
+        assert!(haunt.eligible.contains(&PlayerId(4)));
+        assert_eq!(game.phase.kind, PhaseKind::Night);
+        assert_eq!(game.outcome, MatchOutcome::InProgress);
     }
 }

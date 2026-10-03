@@ -231,22 +231,43 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
 
     let intentions = game.intents.clone();
     let mut outcome = NightOutcome::default();
+    let prisoner = game.jailed.map(|(_, prisoner)| prisoner);
 
     for (&actor, &intent) in &intentions {
-        let player = game.player(actor)?;
-        if !player.alive || matches!(intent, NightIntent::Haunt(_)) {
+        if let NightIntent::Block(target) = intent
+            && game.player(actor)?.alive
+            && game.player(actor)?.role()? == Role::TavernKeeper
+            && prisoner != Some(actor)
+            && prisoner != Some(target)
+            && game.player(target)?.role()? != Role::TavernKeeper
+        {
+            outcome.blocked.insert(target);
+        }
+    }
+    for blocked in &outcome.blocked {
+        outcome.events.push(GameEvent {
+            recipients: Recipients::only(*blocked),
+            channel: "private_system",
+            text: "You were role blocked. The blocker's identity is hidden.".into(),
+        });
+    }
+
+    for (&actor, &intent) in &intentions {
+        if !can_act(game, actor, &outcome.blocked)
+            || matches!(intent, NightIntent::Kill(_) | NightIntent::Haunt(_))
+        {
             continue;
         }
         if let Some(target) = intent.target() {
             let is_non_visit = matches!(intent, NightIntent::Heal(id) if id == actor);
-            if !is_non_visit {
+            if !is_non_visit && prisoner != Some(target) {
                 outcome.visits.push(Visit { actor, target });
             }
         }
     }
 
-    let godfather = living_with_role(game, Role::Godfather);
-    let mafioso = living_with_role(game, Role::Mafioso);
+    let godfather = available_with_role(game, Role::Godfather, &outcome.blocked);
+    let mafioso = available_with_role(game, Role::Mafioso, &outcome.blocked);
     let godfather_target = godfather.and_then(|actor| kill_target(&intentions, actor));
     let mafioso_target = mafioso.and_then(|actor| kill_target(&intentions, actor));
     let mafia_attack = match (godfather, godfather_target, mafioso, mafioso_target) {
@@ -263,10 +284,12 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
                 Ok(Role::Godfather | Role::Mafioso)
             )
         });
-        outcome.visits.push(Visit {
-            actor: attacker,
-            target,
-        });
+        if prisoner != Some(target) {
+            outcome.visits.push(Visit {
+                actor: attacker,
+                target,
+            });
+        }
         outcome.attacks.push(Attack {
             actor: attacker,
             target,
@@ -278,13 +301,44 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
     let mut protected = BTreeMap::<PlayerId, PlayerId>::new();
     for (&actor, &intent) in &intentions {
         if let NightIntent::Heal(target) = intent
-            && game.player(actor)?.alive
+            && can_act(game, actor, &outcome.blocked)
             && game.player(actor)?.role()? == Role::Doctor
+            && prisoner != Some(target)
         {
             protected.insert(target, actor);
             if target == actor {
                 game.player_mut(actor)?.self_heals_remaining -= 1;
             }
+        }
+    }
+
+    for (&actor, &intent) in &intentions {
+        if let NightIntent::Frame(target) = intent
+            && can_act(game, actor, &outcome.blocked)
+            && game.player(actor)?.role()? == Role::Framer
+            && prisoner != Some(target)
+        {
+            game.frames.insert(target);
+        }
+    }
+
+    if let Some((jailor, target)) = game.jailed
+        && intentions.get(&jailor) == Some(&NightIntent::Execute)
+        && can_act(game, jailor, &outcome.blocked)
+        && game.phase.day > 1
+        && game.player(jailor)?.executions_remaining > 0
+    {
+        outcome.attacks.push(Attack {
+            actor: jailor,
+            target,
+            strength: AttackStrength::Unstoppable,
+            cause: DeathCause::Jailor,
+        });
+        let target_is_town = game.player(target)?.faction == Some(Faction::Town);
+        let jailor_state = game.player_mut(jailor)?;
+        jailor_state.executions_remaining -= 1;
+        if target_is_town {
+            jailor_state.executions_remaining = 0;
         }
     }
 
@@ -319,11 +373,23 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
     }
 
     for (&actor, &intent) in &intentions {
+        if !can_act(game, actor, &outcome.blocked) {
+            continue;
+        }
         match intent {
-            NightIntent::Investigate(target)
-                if game.player(actor)?.alive && game.player(actor)?.role()? == Role::Sheriff =>
-            {
-                let suspicious = game.player(target)?.role()?.appears_suspicious();
+            NightIntent::Investigate(target) if game.player(actor)?.role()? == Role::Sheriff => {
+                if prisoner == Some(target) {
+                    outcome.events.push(GameEvent {
+                        recipients: Recipients::only(actor),
+                        channel: "private_system",
+                        text: format!(
+                            "Your investigation of {target} failed because the target was jailed."
+                        ),
+                    });
+                    continue;
+                }
+                let framed = game.frames.contains(&target);
+                let suspicious = framed || game.player(target)?.role()?.appears_suspicious();
                 outcome.events.push(GameEvent {
                     recipients: Recipients::only(actor),
                     channel: "private_system",
@@ -339,10 +405,21 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
                         )
                     },
                 });
+                if framed {
+                    game.frames.remove(&target);
+                }
             }
-            NightIntent::Watch(target)
-                if game.player(actor)?.alive && game.player(actor)?.role()? == Role::Lookout =>
-            {
+            NightIntent::Watch(target) if game.player(actor)?.role()? == Role::Lookout => {
+                if prisoner == Some(target) {
+                    outcome.events.push(GameEvent {
+                        recipients: Recipients::only(actor),
+                        channel: "private_system",
+                        text: format!(
+                            "Your watch on {target} failed because the target was jailed."
+                        ),
+                    });
+                    continue;
+                }
                 let mut visitors: Vec<_> = outcome
                     .visits
                     .iter()
@@ -391,7 +468,7 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
         } else {
             DefenseStrength::None
         };
-        let defense = if protected.contains_key(&attack.target) {
+        let defense = if prisoner == Some(attack.target) || protected.contains_key(&attack.target) {
             DefenseStrength::Powerful
         } else {
             role_defense
@@ -455,6 +532,25 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
     for death in &outcome.deaths {
         game.player_mut(death.player)?.alive = false;
     }
+    let promotions = apply_promotions(game)?;
+    if !promotions.is_empty() {
+        let mafia: BTreeSet<_> = game
+            .players
+            .values()
+            .filter(|player| player.alive && player.faction == Some(Faction::Mafia))
+            .map(|player| player.id)
+            .collect();
+        for (player, role) in promotions {
+            outcome.events.push(GameEvent {
+                recipients: Recipients::Players(mafia.clone()),
+                channel: "mafia_system",
+                text: format!(
+                    "{player} was promoted to {} for future phases.",
+                    role.display_name()
+                ),
+            });
+        }
+    }
 
     if outcome.deaths.is_empty() {
         outcome.events.push(GameEvent {
@@ -492,6 +588,8 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
     }
 
     game.intents.clear();
+    game.jailed = None;
+    game.jail_selection = None;
     game.completed_nights = game.completed_nights.saturating_add(1);
     if game.phase.day >= 2 {
         if outcome.deaths.is_empty() {
@@ -529,6 +627,45 @@ fn living_with_role(game: &crate::game::Game, role: Role) -> Option<PlayerId> {
         .values()
         .find(|player| player.alive && player.current_role == Some(role))
         .map(|player| player.id)
+}
+
+fn can_act(game: &crate::game::Game, actor: PlayerId, blocked: &BTreeSet<PlayerId>) -> bool {
+    game.player(actor).is_ok_and(|player| {
+        player.alive
+            && player.connected
+            && !player.forfeited
+            && game.jailed.is_none_or(|(_, prisoner)| prisoner != actor)
+            && (!blocked.contains(&actor) || player.current_role == Some(Role::TavernKeeper))
+    })
+}
+
+fn available_with_role(
+    game: &crate::game::Game,
+    role: Role,
+    blocked: &BTreeSet<PlayerId>,
+) -> Option<PlayerId> {
+    game.players
+        .values()
+        .find(|player| player.current_role == Some(role) && can_act(game, player.id, blocked))
+        .map(|player| player.id)
+}
+
+fn apply_promotions(
+    game: &mut crate::game::Game,
+) -> Result<Vec<(PlayerId, Role)>, crate::game::GameError> {
+    let mut promotions = Vec::new();
+    let godfather = living_with_role(game, Role::Godfather);
+    let mafioso = living_with_role(game, Role::Mafioso);
+    if godfather.is_none() {
+        if let Some(player) = mafioso {
+            game.player_mut(player)?.current_role = Some(Role::Godfather);
+            promotions.push((player, Role::Godfather));
+        } else if let Some(player) = living_with_role(game, Role::Framer) {
+            game.player_mut(player)?.current_role = Some(Role::Mafioso);
+            promotions.push((player, Role::Mafioso));
+        }
+    }
+    Ok(promotions)
 }
 
 fn kill_target(
@@ -665,6 +802,211 @@ mod tests {
         assert_eq!(
             run(&[PlayerId(1), PlayerId(2), PlayerId(3), PlayerId(4)]),
             run(&[PlayerId(4), PlayerId(2), PlayerId(1), PlayerId(3)])
+        );
+    }
+
+    #[test]
+    fn same_night_frame_is_reported_and_consumed_by_successful_sheriff_check() {
+        let mut game = game_at_night(Preset::Full9.roles().to_vec(), 21);
+        let phase = game.phase.id;
+        game.select_night_intent(PlayerId(8), NightIntent::Frame(PlayerId(2)), phase)
+            .unwrap();
+        game.select_night_intent(PlayerId(1), NightIntent::Investigate(PlayerId(2)), phase)
+            .unwrap();
+        let outcome = game.resolve_night().unwrap();
+        assert!(outcome.events.iter().any(|event| {
+            event.recipients == Recipients::only(PlayerId(1))
+                && event.text.contains("appears suspicious")
+        }));
+        assert!(!game.frames.contains(&PlayerId(2)));
+    }
+
+    #[test]
+    fn stored_frame_survives_until_a_successful_later_investigation() {
+        let mut game = game_at_night(Preset::Full9.roles().to_vec(), 22);
+        game.select_night_intent(PlayerId(8), NightIntent::Frame(PlayerId(2)), game.phase.id)
+            .unwrap();
+        game.resolve_night().unwrap();
+        assert!(game.frames.contains(&PlayerId(2)));
+        game.advance_phase(game.phase.id).unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        assert_eq!(game.phase.kind, PhaseKind::Night);
+        game.select_night_intent(
+            PlayerId(1),
+            NightIntent::Investigate(PlayerId(2)),
+            game.phase.id,
+        )
+        .unwrap();
+        let outcome = game.resolve_night().unwrap();
+        assert!(
+            outcome
+                .events
+                .iter()
+                .any(|event| event.text.contains("appears suspicious"))
+        );
+        assert!(!game.frames.contains(&PlayerId(2)));
+    }
+
+    #[test]
+    fn blocking_godfather_uses_mafioso_fallback_and_blocking_mafioso_uses_godfather() {
+        fn run(blocked: PlayerId) -> (PlayerId, PlayerId) {
+            let mut game = game_at_night(Preset::Full9.roles().to_vec(), 23);
+            let phase = game.phase.id;
+            game.select_night_intent(PlayerId(6), NightIntent::Kill(PlayerId(3)), phase)
+                .unwrap();
+            game.select_night_intent(PlayerId(7), NightIntent::Kill(PlayerId(5)), phase)
+                .unwrap();
+            game.select_night_intent(PlayerId(4), NightIntent::Block(blocked), phase)
+                .unwrap();
+            let outcome = game.resolve_night().unwrap();
+            let attack = outcome
+                .attacks
+                .iter()
+                .find(|attack| attack.cause == DeathCause::Mafia)
+                .unwrap();
+            (attack.actor, attack.target)
+        }
+        assert_eq!(run(PlayerId(6)), (PlayerId(7), PlayerId(5)));
+        assert_eq!(run(PlayerId(7)), (PlayerId(6), PlayerId(3)));
+    }
+
+    #[test]
+    fn blocked_jailor_spends_no_charge_and_prisoner_cannot_act() {
+        let mut game = game_at_night(Preset::Full9.roles().to_vec(), 24);
+        game.phase.day = 2;
+        game.jailed = Some((PlayerId(5), PlayerId(8)));
+        let phase = game.phase.id;
+        game.select_night_intent(PlayerId(5), NightIntent::Execute, phase)
+            .unwrap();
+        assert!(
+            game.select_night_intent(PlayerId(8), NightIntent::Frame(PlayerId(1)), phase)
+                .is_err()
+        );
+        game.select_night_intent(PlayerId(4), NightIntent::Block(PlayerId(5)), phase)
+            .unwrap();
+        let outcome = game.resolve_night().unwrap();
+        assert!(
+            outcome
+                .deaths
+                .iter()
+                .all(|death| death.player != PlayerId(8))
+        );
+        assert_eq!(game.player(PlayerId(5)).unwrap().executions_remaining, 3);
+        assert!(outcome.blocked.contains(&PlayerId(5)));
+    }
+
+    #[test]
+    fn executing_town_removes_all_remaining_jailor_executions() {
+        let mut game = game_at_night(Preset::Full9.roles().to_vec(), 25);
+        game.phase.day = 2;
+        game.jailed = Some((PlayerId(5), PlayerId(1)));
+        game.select_night_intent(PlayerId(5), NightIntent::Execute, game.phase.id)
+            .unwrap();
+        let outcome = game.resolve_night().unwrap();
+        assert!(outcome.deaths[0].causes.contains(&DeathCause::Jailor));
+        assert_eq!(game.player(PlayerId(5)).unwrap().executions_remaining, 0);
+    }
+
+    #[test]
+    fn ordinary_jailor_death_does_not_cancel_established_execution() {
+        let mut game = game_at_night(Preset::Full9.roles().to_vec(), 26);
+        game.phase.day = 2;
+        game.jailed = Some((PlayerId(5), PlayerId(8)));
+        let phase = game.phase.id;
+        game.select_night_intent(PlayerId(5), NightIntent::Execute, phase)
+            .unwrap();
+        game.select_night_intent(PlayerId(6), NightIntent::Kill(PlayerId(5)), phase)
+            .unwrap();
+        let outcome = game.resolve_night().unwrap();
+        assert!(
+            outcome
+                .deaths
+                .iter()
+                .any(|death| death.player == PlayerId(5))
+        );
+        assert!(
+            outcome
+                .deaths
+                .iter()
+                .any(|death| death.player == PlayerId(8))
+        );
+    }
+
+    #[test]
+    fn mafioso_promotes_after_godfather_death_but_sheriff_uses_old_role() {
+        let mut game = game_at_night(Preset::Full9.roles().to_vec(), 27);
+        game.player_mut(PlayerId(9)).unwrap().alive = false;
+        game.player_mut(PlayerId(9)).unwrap().jester_won = true;
+        game.pending_haunt = Some(HauntState {
+            jester: PlayerId(9),
+            eligible: BTreeSet::from([PlayerId(6)]),
+        });
+        let phase = game.phase.id;
+        game.select_night_intent(PlayerId(1), NightIntent::Investigate(PlayerId(7)), phase)
+            .unwrap();
+        game.select_night_intent(PlayerId(9), NightIntent::Haunt(PlayerId(6)), phase)
+            .unwrap();
+        let outcome = game.resolve_night().unwrap();
+        assert!(outcome.events.iter().any(|event| {
+            event.recipients == Recipients::only(PlayerId(1))
+                && event.text.contains("appears suspicious")
+        }));
+        assert_eq!(
+            game.player(PlayerId(7)).unwrap().role().unwrap(),
+            Role::Godfather
+        );
+    }
+
+    #[test]
+    fn framer_promotes_when_both_killing_roles_die_in_same_batch() {
+        let mut game = game_at_night(Preset::Full9.roles().to_vec(), 28);
+        game.phase.day = 2;
+        game.jailed = Some((PlayerId(5), PlayerId(6)));
+        game.player_mut(PlayerId(9)).unwrap().alive = false;
+        game.player_mut(PlayerId(9)).unwrap().jester_won = true;
+        game.pending_haunt = Some(HauntState {
+            jester: PlayerId(9),
+            eligible: BTreeSet::from([PlayerId(7)]),
+        });
+        let phase = game.phase.id;
+        game.select_night_intent(PlayerId(5), NightIntent::Execute, phase)
+            .unwrap();
+        game.select_night_intent(PlayerId(9), NightIntent::Haunt(PlayerId(7)), phase)
+            .unwrap();
+        game.resolve_night().unwrap();
+        assert_eq!(
+            game.player(PlayerId(8)).unwrap().role().unwrap(),
+            Role::Mafioso
+        );
+    }
+
+    #[test]
+    fn lookout_caps_report_at_three_without_leaking_roles() {
+        let mut game = game_at_night(Preset::Full9.roles().to_vec(), 29);
+        let phase = game.phase.id;
+        for (actor, intent) in [
+            (PlayerId(2), NightIntent::Heal(PlayerId(1))),
+            (PlayerId(3), NightIntent::Watch(PlayerId(1))),
+            (PlayerId(4), NightIntent::Block(PlayerId(1))),
+            (PlayerId(6), NightIntent::Kill(PlayerId(1))),
+            (PlayerId(8), NightIntent::Frame(PlayerId(1))),
+        ] {
+            game.select_night_intent(actor, intent, phase).unwrap();
+        }
+        let outcome = game.resolve_night().unwrap();
+        let report = outcome
+            .events
+            .iter()
+            .find(|event| {
+                event.recipients == Recipients::only(PlayerId(3)) && event.text.contains("visitors")
+            })
+            .unwrap();
+        assert!(report.text.contains("additional visitors were seen"));
+        assert!(
+            !Role::ALL
+                .iter()
+                .any(|role| report.text.contains(role.display_name()))
         );
     }
 }
