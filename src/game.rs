@@ -172,6 +172,15 @@ pub enum MatchOutcome {
     Aborted,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlayerOutcome {
+    Win,
+    Loss,
+    Draw,
+    Forfeit,
+    Aborted,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameError {
     LobbyFull,
@@ -1075,6 +1084,60 @@ impl Game {
         self.outcome
     }
 
+    pub fn player_outcome(&self, id: PlayerId) -> Result<PlayerOutcome, GameError> {
+        let player = self.player(id)?;
+        if player.forfeited {
+            return Ok(PlayerOutcome::Forfeit);
+        }
+        if player.original_role == Some(Role::Jester) {
+            return Ok(if player.jester_won {
+                PlayerOutcome::Win
+            } else {
+                PlayerOutcome::Loss
+            });
+        }
+        Ok(match self.outcome {
+            MatchOutcome::TownWin if player.faction == Some(Faction::Town) => PlayerOutcome::Win,
+            MatchOutcome::MafiaWin if player.faction == Some(Faction::Mafia) => PlayerOutcome::Win,
+            MatchOutcome::TownWin | MatchOutcome::MafiaWin | MatchOutcome::NoFaction => {
+                PlayerOutcome::Loss
+            }
+            MatchOutcome::Draw => PlayerOutcome::Draw,
+            MatchOutcome::Aborted => PlayerOutcome::Aborted,
+            MatchOutcome::InProgress => PlayerOutcome::Loss,
+        })
+    }
+
+    pub fn final_event(&self) -> GameEvent {
+        let roster = self
+            .players
+            .values()
+            .map(|player| {
+                format!(
+                    "{} {}: original={}, current={}, outcome={:?}",
+                    player.id,
+                    player.name,
+                    player
+                        .original_role
+                        .map(Role::display_name)
+                        .unwrap_or("unassigned"),
+                    player
+                        .current_role
+                        .map(Role::display_name)
+                        .unwrap_or("unassigned"),
+                    self.player_outcome(player.id)
+                        .expect("roster player must have an outcome")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        GameEvent {
+            recipients: Recipients::All,
+            channel: "public_system",
+            text: format!("Final faction result: {:?}. {roster}", self.outcome),
+        }
+    }
+
     pub fn nomination_threshold(&self) -> usize {
         self.players.values().filter(|player| player.alive).count() / 2 + 1
     }
@@ -1650,5 +1713,33 @@ mod tests {
         assert!(haunt.eligible.contains(&PlayerId(4)));
         assert_eq!(game.phase.kind, PhaseKind::Night);
         assert_eq!(game.outcome, MatchOutcome::InProgress);
+    }
+
+    #[test]
+    fn final_results_separate_faction_and_personal_outcomes() {
+        let mut game = ready_demo_game();
+        game.start().unwrap();
+        game.outcome = MatchOutcome::TownWin;
+        game.player_mut(PlayerId(5)).unwrap().jester_won = true;
+        assert_eq!(
+            game.player_outcome(PlayerId(1)).unwrap(),
+            PlayerOutcome::Win
+        );
+        assert_eq!(
+            game.player_outcome(PlayerId(4)).unwrap(),
+            PlayerOutcome::Loss
+        );
+        assert_eq!(
+            game.player_outcome(PlayerId(5)).unwrap(),
+            PlayerOutcome::Win
+        );
+        game.player_mut(PlayerId(2)).unwrap().forfeited = true;
+        assert_eq!(
+            game.player_outcome(PlayerId(2)).unwrap(),
+            PlayerOutcome::Forfeit
+        );
+        let final_event = game.final_event();
+        assert!(final_event.text.contains("original=Sheriff"));
+        assert!(final_event.text.contains("outcome=Forfeit"));
     }
 }

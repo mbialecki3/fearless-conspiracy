@@ -1211,4 +1211,122 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn malformed_peer_disconnect_does_not_stop_healthy_peer() {
+        let path = socket_path("malformed-isolation");
+        let limits = local_test_limits();
+        let mut server = ServerTransport::bind(&path, limits.clone()).unwrap();
+        let mut malformed = UnixStream::connect(&path).unwrap();
+        write_message(
+            &mut malformed,
+            &ClientMessage::Hello {
+                version: PROTOCOL_VERSION,
+                name: "Malformed".into(),
+            },
+        )
+        .unwrap();
+        let _: ServerMessage = read_message(&mut malformed).unwrap();
+        let (malformed_peer, _) = connected_peer(&mut server);
+        let healthy = ClientTransport::connect(&path, "Healthy", limits).unwrap();
+        let (healthy_peer, _) = connected_peer(&mut server);
+
+        malformed
+            .write_all(&((MAX_FRAME_BYTES as u32) + 1).to_be_bytes())
+            .unwrap();
+        loop {
+            match server.recv_timeout(Duration::from_secs(2)).unwrap() {
+                Some(ServerEvent::Disconnected { peer, .. }) if peer == malformed_peer => break,
+                Some(_) => {}
+                None => panic!("malformed peer was not disconnected"),
+            }
+        }
+        let message = ServerMessage::Event {
+            sequence: 1,
+            phase_id: 0,
+            channel: "public".into(),
+            text: "healthy connection survived".into(),
+        };
+        server.send_to(healthy_peer, message.clone()).unwrap();
+        assert_eq!(
+            healthy.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Some(message)
+        );
+    }
+
+    #[test]
+    fn incompatible_protocol_version_gets_clear_error_before_join() {
+        let path = socket_path("bad-version");
+        let limits = local_test_limits();
+        let mut server = ServerTransport::bind(&path, limits).unwrap();
+        let mut stream = UnixStream::connect(&path).unwrap();
+        write_message(
+            &mut stream,
+            &ClientMessage::Hello {
+                version: PROTOCOL_VERSION + 1,
+                name: "Future".into(),
+            },
+        )
+        .unwrap();
+        let reply: ServerMessage = read_message(&mut stream).unwrap();
+        assert!(matches!(reply, ServerMessage::Error { text } if text.contains("incompatible")));
+        assert!(
+            server
+                .recv_timeout(Duration::from_millis(100))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn nonreading_peer_eventually_fills_only_its_bounded_queue() {
+        let path = socket_path("slow-reader");
+        let limits = TransportLimits {
+            outgoing_per_peer: 1,
+            write_timeout: Duration::from_millis(100),
+            ..local_test_limits()
+        };
+        let mut server = ServerTransport::bind(&path, limits.clone()).unwrap();
+        let mut slow = UnixStream::connect(&path).unwrap();
+        write_message(
+            &mut slow,
+            &ClientMessage::Hello {
+                version: PROTOCOL_VERSION,
+                name: "Slow".into(),
+            },
+        )
+        .unwrap();
+        let _: ServerMessage = read_message(&mut slow).unwrap();
+        let (slow_peer, _) = connected_peer(&mut server);
+        let healthy = ClientTransport::connect(&path, "Healthy", limits).unwrap();
+        let (healthy_peer, _) = connected_peer(&mut server);
+        let large = ServerMessage::Event {
+            sequence: 1,
+            phase_id: 0,
+            channel: "test".into(),
+            text: "x".repeat(60_000),
+        };
+        let mut saturated = false;
+        for _ in 0..1_000 {
+            if matches!(
+                server.send_to(slow_peer, large.clone()),
+                Err(CommError::QueueFull(_))
+            ) {
+                saturated = true;
+                break;
+            }
+        }
+        assert!(saturated, "slow peer queue should be bounded");
+        let message = ServerMessage::Event {
+            sequence: 2,
+            phase_id: 0,
+            channel: "public".into(),
+            text: "still responsive".into(),
+        };
+        server.send_to(healthy_peer, message.clone()).unwrap();
+        assert_eq!(
+            healthy.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Some(message)
+        );
+    }
 }
