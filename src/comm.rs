@@ -145,7 +145,7 @@ pub enum ClientMessage {
 pub enum ServerMessage {
     Welcome {
         version: u16,
-        player_id: u8,
+        peer_id: u64,
         text: String,
     },
     Reply {
@@ -155,6 +155,7 @@ pub enum ServerMessage {
     },
     Event {
         sequence: u64,
+        phase_id: u64,
         channel: String,
         text: String,
     },
@@ -370,6 +371,14 @@ struct LifecycleNotice {
     reason: String,
 }
 
+struct IncompleteHandshake(Arc<AtomicUsize>);
+
+impl Drop for IncompleteHandshake {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct SocketIdentity {
     device: u64,
@@ -465,8 +474,8 @@ impl ServerTransport {
                                             lifecycle_tx,
                                             writers,
                                             reserved_uids,
+                                            IncompleteHandshake(incomplete),
                                         );
-                                        incomplete.fetch_sub(1, Ordering::AcqRel);
                                     });
                             }
                             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
@@ -641,6 +650,7 @@ fn handle_connection(
     lifecycle: mpsc::Sender<LifecycleNotice>,
     writers: Arc<Mutex<HashMap<PeerId, WriterHandle>>>,
     reserved_uids: Arc<Mutex<HashSet<u32>>>,
+    handshake: IncompleteHandshake,
 ) {
     let credentials = match peer_credentials(&stream) {
         Ok(credentials) => credentials,
@@ -705,6 +715,7 @@ fn handle_connection(
             return;
         }
     }
+    drop(handshake);
 
     let mut writer_stream = match stream.try_clone() {
         Ok(stream) => stream,
@@ -766,7 +777,7 @@ fn handle_connection(
     if writer_tx
         .send(WriterCommand::Message(ServerMessage::Welcome {
             version: PROTOCOL_VERSION,
-            player_id: peer.0 as u8,
+            peer_id: peer.0,
             text: format!("connected as IPC peer {}", peer.0),
         }))
         .is_err()
@@ -1077,7 +1088,7 @@ mod tests {
                 &mut server,
                 &ServerMessage::Welcome {
                     version: PROTOCOL_VERSION,
-                    player_id: 1,
+                    peer_id: 1,
                     text: "connected over AF_UNIX/SOCK_STREAM".into(),
                 },
             )
@@ -1093,7 +1104,7 @@ mod tests {
         )
         .unwrap();
         let reply: ServerMessage = read_message(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::Welcome { player_id: 1, .. }));
+        assert!(matches!(reply, ServerMessage::Welcome { peer_id: 1, .. }));
         server_thread.join().unwrap();
     }
 
@@ -1112,6 +1123,7 @@ mod tests {
 
         let broadcast = ServerMessage::Event {
             sequence: 1,
+            phase_id: 0,
             channel: "public".into(),
             text: "hello everyone".into(),
         };
@@ -1132,6 +1144,7 @@ mod tests {
 
         let group = ServerMessage::Event {
             sequence: 2,
+            phase_id: 0,
             channel: "group".into(),
             text: "Alice and Bob only".into(),
         };
@@ -1149,6 +1162,7 @@ mod tests {
 
         let private = ServerMessage::Event {
             sequence: 3,
+            phase_id: 0,
             channel: "private".into(),
             text: "for Cara".into(),
         };
