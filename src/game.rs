@@ -1,4 +1,4 @@
-use crate::roles::{Faction, Preset, Role};
+use crate::roles::{Faction, HauntState, NightIntent, NightOutcome, Preset, Role};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
@@ -243,7 +243,11 @@ pub struct Game {
     pub trials_today: u8,
     pub last_trial_votes: BTreeMap<PlayerId, JudgmentChoice>,
     pub outcome: MatchOutcome,
-    rng: StdRng,
+    pub intents: BTreeMap<PlayerId, NightIntent>,
+    pub pending_haunt: Option<HauntState>,
+    pub completed_nights: u8,
+    pub deathless_cycles: u8,
+    pub(crate) rng: StdRng,
 }
 
 impl Game {
@@ -259,6 +263,10 @@ impl Game {
             trials_today: 0,
             last_trial_votes: BTreeMap::new(),
             outcome: MatchOutcome::InProgress,
+            intents: BTreeMap::new(),
+            pending_haunt: None,
+            completed_nights: 0,
+            deathless_cycles: 0,
             rng: StdRng::seed_from_u64(seed),
         })
     }
@@ -275,6 +283,10 @@ impl Game {
             trials_today: 0,
             last_trial_votes: BTreeMap::new(),
             outcome: MatchOutcome::InProgress,
+            intents: BTreeMap::new(),
+            pending_haunt: None,
+            completed_nights: 0,
+            deathless_cycles: 0,
             rng: StdRng::from_os_rng(),
         })
     }
@@ -732,7 +744,124 @@ impl Game {
         })
     }
 
+    pub fn select_night_intent(
+        &mut self,
+        actor: PlayerId,
+        intent: NightIntent,
+        phase_id: u64,
+    ) -> Result<Vec<GameEvent>, GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Night, "night")?;
+        let role = self.player(actor)?.role()?;
+        let is_haunt = matches!(intent, NightIntent::Haunt(_));
+        if !is_haunt {
+            self.ensure_living(actor)?;
+        }
+        let matches_role = matches!(
+            (role, intent),
+            (Role::Sheriff, NightIntent::Investigate(_))
+                | (Role::Doctor, NightIntent::Heal(_))
+                | (Role::Lookout, NightIntent::Watch(_))
+                | (Role::TavernKeeper, NightIntent::Block(_))
+                | (Role::Godfather | Role::Mafioso, NightIntent::Kill(_))
+                | (Role::Framer, NightIntent::Frame(_))
+                | (Role::Jailor, NightIntent::Execute | NightIntent::Spare)
+                | (Role::Jester, NightIntent::Haunt(_))
+        );
+        if !matches_role {
+            return Err(GameError::WrongRole);
+        }
+        if let Some(target) = intent.target() {
+            self.ensure_living(target)?;
+            if actor == target {
+                if intent != NightIntent::Heal(actor) {
+                    return Err(GameError::InvalidTarget(
+                        "this ability cannot target its actor".into(),
+                    ));
+                }
+                if self.player(actor)?.self_heals_remaining == 0 {
+                    return Err(GameError::InvalidTarget(
+                        "the self-heal is exhausted".into(),
+                    ));
+                }
+            }
+            if matches!(role, Role::Godfather | Role::Mafioso | Role::Framer)
+                && self.player(target)?.faction == Some(Faction::Mafia)
+            {
+                return Err(GameError::InvalidTarget(
+                    "Mafia abilities cannot target a Mafia teammate".into(),
+                ));
+            }
+            if is_haunt {
+                let haunt = self.pending_haunt.as_ref().ok_or(GameError::WrongRole)?;
+                if haunt.jester != actor || !haunt.eligible.contains(&target) {
+                    return Err(GameError::InvalidTarget(
+                        "haunt must target an eligible guilty or abstaining voter".into(),
+                    ));
+                }
+            }
+        }
+        self.intents.insert(actor, intent);
+
+        let mut events = vec![GameEvent {
+            recipients: Recipients::only(actor),
+            channel: "private_system",
+            text: match intent.target() {
+                Some(target) => {
+                    format!("Night choice set to {target}. You may revise it before cutoff.")
+                }
+                None => format!("Night choice set to {intent:?}."),
+            },
+        }];
+        if role.faction() == Faction::Mafia {
+            let recipients = self
+                .players
+                .values()
+                .filter(|player| player.alive && player.faction == Some(Faction::Mafia))
+                .map(|player| player.id)
+                .collect();
+            events.push(GameEvent {
+                recipients: Recipients::Players(recipients),
+                channel: "mafia_system",
+                text: format!("{actor} updated their {:?} selection.", role),
+            });
+        }
+        Ok(events)
+    }
+
+    pub fn cancel_night_intent(
+        &mut self,
+        actor: PlayerId,
+        phase_id: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Night, "night")?;
+        self.intents.remove(&actor);
+        Ok(GameEvent {
+            recipients: Recipients::only(actor),
+            channel: "private_system",
+            text: "Night choice cleared.".into(),
+        })
+    }
+
+    pub fn resolve_night(&mut self) -> Result<NightOutcome, GameError> {
+        if self.phase.kind != PhaseKind::Night {
+            return Err(GameError::WrongPhase {
+                expected: "night",
+                actual: self.phase.kind,
+            });
+        }
+        crate::roles::resolve_night(self)
+    }
+
     pub fn evaluate_victory(&mut self) -> MatchOutcome {
+        if self.pending_haunt.as_ref().is_some_and(|haunt| {
+            haunt
+                .eligible
+                .iter()
+                .any(|target| self.players.get(target).is_some_and(|player| player.alive))
+        }) {
+            self.outcome = MatchOutcome::InProgress;
+            return self.outcome;
+        }
         let town = self
             .players
             .values()
@@ -772,6 +901,20 @@ impl Game {
         let role = player.role()?;
         let name = player.name.clone();
         let will = player.will.clone();
+        if role == Role::Jester {
+            let eligible = self
+                .last_trial_votes
+                .iter()
+                .filter_map(|(voter, choice)| {
+                    matches!(choice, JudgmentChoice::Guilty | JudgmentChoice::Abstain)
+                        .then_some(*voter)
+                })
+                .collect();
+            self.pending_haunt = Some(HauntState {
+                jester: accused,
+                eligible,
+            });
+        }
         let mut events = vec![GameEvent {
             recipients: Recipients::All,
             channel: "public_system",
@@ -788,7 +931,7 @@ impl Game {
         Ok(events)
     }
 
-    fn begin_night(&mut self) {
+    pub(crate) fn begin_night(&mut self) {
         self.nominations.clear();
         self.judgments.clear();
         self.accused = None;
@@ -838,13 +981,13 @@ impl Game {
         }
     }
 
-    fn move_to(&mut self, kind: PhaseKind, day: u8) {
+    pub(crate) fn move_to(&mut self, kind: PhaseKind, day: u8) {
         self.phase.id += 1;
         self.phase.kind = kind;
         self.phase.day = day;
     }
 
-    fn phase_event(&self, text: &str) -> GameEvent {
+    pub(crate) fn phase_event(&self, text: &str) -> GameEvent {
         GameEvent {
             recipients: Recipients::All,
             channel: "public_system",
