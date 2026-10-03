@@ -1,4 +1,5 @@
 use crate::game::{Game, GameError, GameEvent, JudgmentChoice, PhaseKind, PlayerId, Recipients};
+use crate::roles::Role;
 use crate::roles::{Faction, NightIntent};
 
 #[derive(Clone, Debug, Default)]
@@ -27,6 +28,26 @@ pub fn dispatch(
         return Ok(private(
             actor,
             "Commands: /ready, /role, /players, /say, /whisper, /vote, /unvote, /guilty, /innocent, /abstain, role night commands, /cancel, /will, /deathnote, /dead, /mafia, /quit.",
+        ));
+    }
+    if let Some(role_name) = input.strip_prefix("/help ") {
+        let role = Role::ALL
+            .into_iter()
+            .find(|role| {
+                role.display_name().eq_ignore_ascii_case(role_name)
+                    || format!("{role:?}").eq_ignore_ascii_case(role_name)
+            })
+            .ok_or_else(|| GameError::InvalidText(format!("unknown role {role_name:?}")))?;
+        return Ok(private(
+            actor,
+            &format!(
+                "{}: faction={:?}, night command={}, suspicious={}, basic defense={}.",
+                role.display_name(),
+                role.faction(),
+                role.night_command().unwrap_or("none"),
+                role.appears_suspicious(),
+                role.has_basic_defense()
+            ),
         ));
     }
     if input == "/ready" {
@@ -72,6 +93,38 @@ pub fn dispatch(
             .join(", ");
         return Ok(private(actor, &text));
     }
+    if input == "/graveyard" {
+        let text = game
+            .players
+            .values()
+            .filter(|player| !player.alive)
+            .map(|player| {
+                format!(
+                    "{} {} ({})",
+                    player.id,
+                    player.name,
+                    player
+                        .current_role
+                        .map(Role::display_name)
+                        .unwrap_or("unassigned")
+                )
+            })
+            .collect::<Vec<_>>();
+        return Ok(private(
+            actor,
+            &if text.is_empty() {
+                "Graveyard: (empty)".into()
+            } else {
+                format!("Graveyard: {}", text.join(", "))
+            },
+        ));
+    }
+    if input == "/history" {
+        return Ok(private(
+            actor,
+            "Your terminal transcript is the ordered history of events authorized for you.",
+        ));
+    }
     if input == "/will show" {
         return Ok(private(
             actor,
@@ -108,6 +161,15 @@ pub fn dispatch(
     if let Some(text) = input.strip_prefix("/deathnote set ") {
         game.set_death_note(actor, text)?;
         return Ok(private(actor, "Death note replaced."));
+    }
+    if let Some(text) = input.strip_prefix("/deathnote append ") {
+        let mut note = game.player(actor)?.death_note.clone();
+        if !note.is_empty() {
+            note.push('\n');
+        }
+        note.push_str(text);
+        game.set_death_note(actor, &note)?;
+        return Ok(private(actor, "Death note updated."));
     }
     if let Some(text) = input.strip_prefix("/say ") {
         return Ok(events(vec![game.say(actor, text, phase_id)?]));

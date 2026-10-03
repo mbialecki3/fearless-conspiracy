@@ -8,6 +8,7 @@ use terminal_salem::command;
 use terminal_salem::game::{
     Game, GameConfig, GameEvent, MatchOutcome, PhaseKind, PlayerId, Recipients,
 };
+use terminal_salem::rate_limit::{RateDecision, RateLimiter, RequestTracker, is_chat_command};
 use terminal_salem::roles::Preset;
 
 #[derive(Clone, Copy)]
@@ -106,6 +107,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sequences = HashMap::<PlayerId, u64>::new();
     let mut observed_phase = game.phase.id;
     let mut deadline = None;
+    let server_started = Instant::now();
+    let mut rate_limiter = RateLimiter::default();
+    let mut request_tracker = RequestTracker::default();
     println!(
         "Terminal Salem {} listening on {path}; waiting for {} players",
         preset.label(),
@@ -120,6 +124,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|duration| Instant::now() + duration);
         }
         if game.outcome != MatchOutcome::InProgress {
+            deliver_events(
+                &transport,
+                &player_peers,
+                &mut sequences,
+                game.phase.id,
+                vec![game.final_event()],
+            );
             std::thread::sleep(Duration::from_millis(100));
             return Ok(());
         }
@@ -205,6 +216,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     transport.disconnect(peer, "connection has no admitted player");
                     continue;
                 };
+                if !request_tracker.accept(player, request_id) {
+                    let _ = transport.send_to(
+                        peer,
+                        ServerMessage::Reply {
+                            request_id,
+                            accepted: false,
+                            text: "duplicate or old request ID".into(),
+                        },
+                    );
+                    continue;
+                }
+                match rate_limiter.check(player, is_chat_command(&text), server_started.elapsed()) {
+                    RateDecision::Allowed => {}
+                    RateDecision::Rejected => {
+                        let _ = transport.send_to(
+                            peer,
+                            ServerMessage::Reply {
+                                request_id,
+                                accepted: false,
+                                text: "rate limit exceeded".into(),
+                            },
+                        );
+                        continue;
+                    }
+                    RateDecision::Disconnect => {
+                        transport
+                            .disconnect(player_peers[&player], "repeated rate-limit violations");
+                        continue;
+                    }
+                }
                 match command::dispatch(&mut game, player, phase_id, &text) {
                     Ok(output) => {
                         deliver_events(
@@ -252,6 +293,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             ServerEvent::Disconnected { peer, reason } => {
                 if let Some(player) = peers.remove(&peer) {
+                    rate_limiter.remove(player);
+                    request_tracker.remove(player);
                     player_peers.remove(&player);
                     println!("{player} disconnected: {reason}");
                     if game.phase.kind == PhaseKind::Lobby {

@@ -611,6 +611,13 @@ pub fn resolve_night(game: &mut crate::game::Game) -> Result<NightOutcome, crate
             channel: "public_system",
             text: "The faction contest ended in a draw.".into(),
         });
+    } else if faction_outcome == MatchOutcome::InProgress && game.deathless_cycles == 2 {
+        outcome.events.push(GameEvent {
+            recipients: Recipients::All,
+            channel: "public_system",
+            text: "Warning: one more deathless cycle will end the faction contest in a draw."
+                .into(),
+        });
     } else if faction_outcome != MatchOutcome::InProgress {
         outcome.events.push(GameEvent {
             recipients: Recipients::All,
