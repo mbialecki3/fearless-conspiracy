@@ -122,6 +122,24 @@ pub fn dispatch(
     if let Some(text) = input.strip_prefix("/dead ") {
         return Ok(events(vec![game.dead_chat(actor, text, phase_id)?]));
     }
+    if let Some(text) = input.strip_prefix("/jailchat ") {
+        return Ok(events(vec![game.jail_chat(actor, text, phase_id)?]));
+    }
+    if let Some(target) = input.strip_prefix("/jail ") {
+        return Ok(events(vec![game.select_jail(
+            actor,
+            player_id(target)?,
+            phase_id,
+        )?]));
+    }
+    if input == "/execute" || input == "/spare" {
+        let intent = if input == "/execute" {
+            NightIntent::Execute
+        } else {
+            NightIntent::Spare
+        };
+        return Ok(events(game.select_night_intent(actor, intent, phase_id)?));
+    }
     if let Some(target) = input.strip_prefix("/vote ") {
         return Ok(events(game.nominate(
             actor,
@@ -142,6 +160,13 @@ pub fn dispatch(
     }
     if input == "/cancel" {
         return Ok(events(vec![game.cancel_night_intent(actor, phase_id)?]));
+    }
+    if input == "/heal self" {
+        return Ok(events(game.select_night_intent(
+            actor,
+            NightIntent::Heal(actor),
+            phase_id,
+        )?));
     }
     for (prefix, constructor) in [
         (
@@ -167,6 +192,13 @@ pub fn dispatch(
     if !input.starts_with('/') {
         if !game.player(actor)?.alive {
             return Ok(events(vec![game.dead_chat(actor, input, phase_id)?]));
+        }
+        if game.phase.kind == PhaseKind::Night
+            && game
+                .jailed
+                .is_some_and(|(jailor, prisoner)| actor == jailor || actor == prisoner)
+        {
+            return Ok(events(vec![game.jail_chat(actor, input, phase_id)?]));
         }
         if game.phase.kind == PhaseKind::Night
             && game.player(actor)?.faction == Some(Faction::Mafia)
