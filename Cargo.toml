@@ -9,8 +9,8 @@ license = "MIT"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+nix = { version = "0.30", features = ["socket", "user"] }
 
 [profile.release]
 lto = "thin"
 strip = true
-
