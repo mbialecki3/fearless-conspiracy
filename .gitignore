@@ -1,0 +1,5 @@
+/target/
+*.log
+/terminal-salem-*.tgz
+/report/screenshots/private/
+
