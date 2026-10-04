@@ -70,6 +70,20 @@ Available presets are `demo5`, `standard7`, `standard8`, and `full9`. Add
 test/screenshot run. `--fast --allow-same-uid` is only for automated local
 smoke tests; it shortens phase timers and disables the separate-UID check.
 
+For a host-paced demonstration, add `--manual`. In the **server terminal**,
+enter `advance` to finish the current phase, `status` to inspect progress,
+`help` for options, or `abort` to end immediately with no new wins. A majority
+nomination still starts a trial immediately. Console EOF leaves the server
+running; it does not advance or abort the game. Players cannot use host controls.
+
+Override individual timers before starting with repeated options such as
+`--duration night=45 --duration nominations=30 --duration defense=15`.
+Use seconds from 0.001 through 3600; `salem-server --help` lists all phase names.
+Overrides apply after `--fast` regardless of argument order. Every player sees
+the selected mode and durations on joining; timers are inactive in manual mode.
+Timed nominations pause for trials and resume their remaining budget after
+acquittals or an accused player's forfeit.
+
 The client attaches the latest server-issued phase ID to every state-changing
 command. The server rejects stale commands, routes hidden events only to their
 authorized sockets, and advances authoritative timers without waiting for idle
