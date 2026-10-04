@@ -1053,6 +1053,9 @@ impl Game {
     }
 
     pub fn evaluate_victory(&mut self) -> MatchOutcome {
+        if self.outcome != MatchOutcome::InProgress {
+            return self.outcome;
+        }
         if self.pending_haunt.as_ref().is_some_and(|haunt| {
             haunt
                 .eligible
@@ -1089,6 +1092,9 @@ impl Game {
         if player.forfeited {
             return Ok(PlayerOutcome::Forfeit);
         }
+        if self.outcome == MatchOutcome::Aborted && !player.jester_won {
+            return Ok(PlayerOutcome::Aborted);
+        }
         if player.original_role == Some(Role::Jester) {
             return Ok(if player.jester_won {
                 PlayerOutcome::Win
@@ -1106,6 +1112,26 @@ impl Game {
             MatchOutcome::Aborted => PlayerOutcome::Aborted,
             MatchOutcome::InProgress => PlayerOutcome::Loss,
         })
+    }
+
+    /// End immediately, preserving already earned personal wins and forfeits.
+    pub fn abort(&mut self) -> Vec<GameEvent> {
+        if self.outcome != MatchOutcome::InProgress {
+            return Vec::new();
+        }
+        self.outcome = MatchOutcome::Aborted;
+        self.intents.clear();
+        self.pending_haunt = None;
+        self.jailed = None;
+        self.jail_selection = None;
+        self.accused = None;
+        self.nominations.clear();
+        self.judgments.clear();
+        for player in self.players.values_mut() {
+            player.pending_forfeit = false;
+        }
+        self.move_to(PhaseKind::Ended, self.phase.day);
+        vec![self.phase_event("The host aborted the match. No new wins are awarded.")]
     }
 
     pub fn final_event(&self) -> GameEvent {
@@ -1400,6 +1426,35 @@ pub fn validate_player_text(text: &str, maximum: usize) -> Result<(), GameError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn abort_is_terminal_and_awards_no_new_wins() {
+        let mut game = ready_demo_game();
+        game.start().unwrap();
+        game.abort();
+        assert_eq!(game.phase.kind, PhaseKind::Ended);
+        assert_eq!(game.evaluate_victory(), MatchOutcome::Aborted);
+        for id in 1..=5 {
+            assert_eq!(
+                game.player_outcome(PlayerId(id)).unwrap(),
+                PlayerOutcome::Aborted
+            );
+        }
+        let phase = game.phase;
+        assert!(game.abort().is_empty());
+        assert_eq!(game.phase, phase);
+
+        let mut won = ready_demo_game();
+        won.start().unwrap();
+        won.player_mut(PlayerId(5)).unwrap().jester_won = true;
+        won.player_mut(PlayerId(1)).unwrap().forfeited = true;
+        won.abort();
+        assert_eq!(won.player_outcome(PlayerId(5)).unwrap(), PlayerOutcome::Win);
+        assert_eq!(
+            won.player_outcome(PlayerId(1)).unwrap(),
+            PlayerOutcome::Forfeit
+        );
+    }
 
     fn ready_demo_game() -> Game {
         let roles = Preset::Demo5.roles().to_vec();

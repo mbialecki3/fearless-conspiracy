@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 use std::env;
+use std::io::{self, BufRead};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 use terminal_salem::comm::{
     ClientMessage, PeerId, ServerEvent, ServerMessage, ServerTransport, TransportLimits,
@@ -9,26 +12,21 @@ use terminal_salem::game::{
     Game, GameConfig, GameEvent, MatchOutcome, PhaseKind, PlayerId, Recipients,
 };
 use terminal_salem::rate_limit::{RateDecision, RateLimiter, RequestTracker, is_chat_command};
-use terminal_salem::roles::Preset;
-use terminal_salem::server::{Durations, PhaseClock, advance_boundary};
+use terminal_salem::server::{
+    HostCommand, PhaseClock, SERVER_USAGE, ServerOptions, advance_boundary,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = env::args().skip(1).collect();
-    let path = arguments
-        .first()
-        .filter(|argument| !argument.starts_with("--"))
-        .cloned()
-        .unwrap_or_else(|| "/run/terminal-salem/game.sock".into());
-    let preset = option_value(&arguments, "--preset")
-        .map(parse_preset)
-        .transpose()?
-        .unwrap_or(Preset::Demo5);
-    let scenario = arguments.iter().any(|argument| argument == "--scenario");
-    let fast = arguments.iter().any(|argument| argument == "--fast");
-    let allow_same_uid = arguments
-        .iter()
-        .any(|argument| argument == "--allow-same-uid");
-    let config = if scenario {
+    if arguments.iter().any(|argument| argument == "--help") {
+        println!("{SERVER_USAGE}");
+        return Ok(());
+    }
+    let options = ServerOptions::parse(&arguments)?;
+    let path = &options.path;
+    let preset = options.preset;
+    let allow_same_uid = options.allow_same_uid;
+    let config = if options.scenario {
         GameConfig::scenario(preset.roles().to_vec())
     } else {
         GameConfig::ordinary(preset)
@@ -39,16 +37,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         reject_server_uid: !allow_same_uid,
         ..TransportLimits::default()
     };
-    let mut transport = ServerTransport::bind(&path, limits)?;
-    let durations = if fast {
-        Durations::fast()
-    } else {
-        Durations::default()
-    };
+    let mut transport = ServerTransport::bind(path, limits)?;
     let mut peers = HashMap::<PeerId, PlayerId>::new();
     let mut player_peers = HashMap::<PlayerId, PeerId>::new();
     let mut sequences = HashMap::<PlayerId, u64>::new();
-    let mut clock = PhaseClock::new(durations);
+    let mut clock = if options.manual {
+        PhaseClock::manual(options.durations)
+    } else {
+        PhaseClock::new(options.durations)
+    };
+    let (host_tx, host_rx) = mpsc::sync_channel(16);
+    thread::Builder::new()
+        .name("salem-host-console".into())
+        .spawn(move || {
+            for line in io::stdin().lock().lines() {
+                let Ok(line) = line else { break };
+                if host_tx.send(line).is_err() {
+                    break;
+                }
+            }
+        })?;
     let server_started = Instant::now();
     let mut rate_limiter = RateLimiter::default();
     let mut request_tracker = RequestTracker::default();
@@ -57,6 +65,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         preset.label(),
         game.config.expected_players()
     );
+    println!("{}", options.announcement());
+    println!("Host console: help, status, advance (manual mode), abort.");
 
     loop {
         clock.sync(game.phase, Instant::now());
@@ -83,6 +93,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
+        if let Ok(line) = host_rx.try_recv() {
+            match HostCommand::parse(&line) {
+                Ok(HostCommand::Help) => println!("{SERVER_USAGE}"),
+                Ok(HostCommand::Status) => println!(
+                    "Host status: day {} {:?}, phase {}, result {:?}, {} connected players",
+                    game.phase.day,
+                    game.phase.kind,
+                    game.phase.id,
+                    game.outcome,
+                    player_peers.len()
+                ),
+                Ok(HostCommand::Advance) if options.manual => match advance_boundary(&mut game) {
+                    Ok(events) => deliver_events(
+                        &transport,
+                        &player_peers,
+                        &mut sequences,
+                        game.phase.id,
+                        events,
+                    ),
+                    Err(error) => eprintln!("Host: {error}"),
+                },
+                Ok(HostCommand::Advance) => eprintln!("Host: advance requires --manual"),
+                Ok(HostCommand::Abort) => {
+                    let events = game.abort();
+                    deliver_events(
+                        &transport,
+                        &player_peers,
+                        &mut sequences,
+                        game.phase.id,
+                        events,
+                    );
+                }
+                Err(error) => eprintln!("Host: {error}"),
+            }
+            continue;
+        }
         let wait = clock.wait(Instant::now());
         let Some(event) = transport.recv_timeout(wait)? else {
             continue;
@@ -105,6 +151,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     player_peers.insert(player, peer);
                     sequences.insert(player, 0);
                     let joined = vec![
+                        GameEvent {
+                            recipients: Recipients::only(player),
+                            channel: "lobby",
+                            text: options.announcement(),
+                        },
                         GameEvent {
                             recipients: Recipients::only(player),
                             channel: "private_system",
@@ -264,24 +315,5 @@ fn deliver_events(
                 },
             );
         }
-    }
-}
-
-fn option_value<'a>(arguments: &'a [String], option: &str) -> Option<&'a str> {
-    arguments
-        .windows(2)
-        .find(|pair| pair[0] == option)
-        .map(|pair| pair[1].as_str())
-}
-
-fn parse_preset(text: &str) -> Result<Preset, String> {
-    match text {
-        "demo5" | "5" => Ok(Preset::Demo5),
-        "standard7" | "7" => Ok(Preset::Standard7),
-        "standard8" | "8" => Ok(Preset::Standard8),
-        "full9" | "9" => Ok(Preset::Full9),
-        _ => Err(format!(
-            "unknown preset {text:?}; use demo5, standard7, standard8, or full9"
-        )),
     }
 }
