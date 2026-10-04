@@ -7,6 +7,8 @@ connection threads, peer credentials, and delivery queues live in
 `src/comm.rs`; game rules remain independent of transport code.
 
 The authoritative implementation plan and fixed ruleset are in [`plan.md`](plan.md).
+The [improvement roadmap](docs/improvements.md) prioritizes remaining rules,
+player-experience, and Linux IPC work with acceptance tests and milestone gates.
 
 ## Development setup (Ubuntu 26.04)
 
