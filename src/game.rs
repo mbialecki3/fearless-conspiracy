@@ -426,6 +426,7 @@ impl Game {
     }
 
     pub fn set_will(&mut self, id: PlayerId, text: &str) -> Result<(), GameError> {
+        self.ensure_gameplay_open()?;
         validate_player_text(text, MAX_WILL_BYTES)?;
         let player = self.player_mut(id)?;
         if !player.alive {
@@ -438,6 +439,7 @@ impl Game {
     }
 
     pub fn set_death_note(&mut self, id: PlayerId, text: &str) -> Result<(), GameError> {
+        self.ensure_gameplay_open()?;
         validate_player_text(text, MAX_DEATH_NOTE_BYTES)?;
         let player = self.player_mut(id)?;
         if !player.role()?.is_mafia_killing() {
@@ -992,7 +994,7 @@ impl Game {
     }
 
     pub fn mark_disconnected(&mut self, id: PlayerId) -> Result<(), GameError> {
-        let in_game = self.phase.kind != PhaseKind::Lobby;
+        let in_game = !matches!(self.phase.kind, PhaseKind::Lobby | PhaseKind::Ended);
         let player = self.player_mut(id)?;
         player.connected = false;
         if in_game && player.alive {
@@ -1003,6 +1005,9 @@ impl Game {
     }
 
     pub fn apply_pending_forfeits(&mut self) -> Vec<GameEvent> {
+        if self.outcome != MatchOutcome::InProgress {
+            return Vec::new();
+        }
         let forfeits: Vec<_> = self
             .players
             .values()
@@ -1166,6 +1171,32 @@ impl Game {
 
     pub fn nomination_threshold(&self) -> usize {
         self.players.values().filter(|player| player.alive).count() / 2 + 1
+    }
+
+    pub fn postgame_chat(
+        &self,
+        actor: PlayerId,
+        text: &str,
+        phase_id: u64,
+    ) -> Result<GameEvent, GameError> {
+        self.ensure_phase(phase_id, PhaseKind::Ended, "postgame")?;
+        validate_player_text(text, MAX_CHAT_BYTES)?;
+        let player = self.player(actor)?;
+        Ok(GameEvent {
+            recipients: Recipients::All,
+            channel: "postgame",
+            text: format!("{actor} {}: {text}", player.name),
+        })
+    }
+
+    fn ensure_gameplay_open(&self) -> Result<(), GameError> {
+        if self.outcome != MatchOutcome::InProgress {
+            return Err(GameError::WrongPhase {
+                expected: "postgame chat or read commands; gameplay is frozen",
+                actual: self.phase.kind,
+            });
+        }
+        Ok(())
     }
 
     fn execute_accused(&mut self) -> Result<Vec<GameEvent>, GameError> {
