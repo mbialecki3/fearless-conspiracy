@@ -10,64 +10,7 @@ use terminal_salem::game::{
 };
 use terminal_salem::rate_limit::{RateDecision, RateLimiter, RequestTracker, is_chat_command};
 use terminal_salem::roles::Preset;
-
-#[derive(Clone, Copy)]
-struct Durations {
-    role_reveal: Duration,
-    day_one: Duration,
-    night: Duration,
-    dawn: Duration,
-    discussion: Duration,
-    nominations: Duration,
-    defense: Duration,
-    judgment: Duration,
-    last_words: Duration,
-}
-
-impl Durations {
-    fn standard() -> Self {
-        Self {
-            role_reveal: Duration::from_secs(10),
-            day_one: Duration::from_secs(30),
-            night: Duration::from_secs(60),
-            dawn: Duration::from_secs(10),
-            discussion: Duration::from_secs(90),
-            nominations: Duration::from_secs(60),
-            defense: Duration::from_secs(30),
-            judgment: Duration::from_secs(20),
-            last_words: Duration::from_secs(15),
-        }
-    }
-
-    fn fast() -> Self {
-        Self {
-            role_reveal: Duration::from_millis(200),
-            day_one: Duration::from_millis(300),
-            night: Duration::from_millis(500),
-            dawn: Duration::from_millis(200),
-            discussion: Duration::from_millis(300),
-            nominations: Duration::from_millis(500),
-            defense: Duration::from_millis(300),
-            judgment: Duration::from_millis(300),
-            last_words: Duration::from_millis(200),
-        }
-    }
-
-    fn for_phase(self, phase: PhaseKind) -> Option<Duration> {
-        match phase {
-            PhaseKind::RoleReveal => Some(self.role_reveal),
-            PhaseKind::DayOne => Some(self.day_one),
-            PhaseKind::Night => Some(self.night),
-            PhaseKind::Dawn => Some(self.dawn),
-            PhaseKind::Discussion => Some(self.discussion),
-            PhaseKind::Nominations => Some(self.nominations),
-            PhaseKind::Defense => Some(self.defense),
-            PhaseKind::Judgment => Some(self.judgment),
-            PhaseKind::LastWords => Some(self.last_words),
-            PhaseKind::Lobby | PhaseKind::Ended => None,
-        }
-    }
-}
+use terminal_salem::server::{Durations, PhaseClock, advance_boundary};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = env::args().skip(1).collect();
@@ -100,13 +43,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let durations = if fast {
         Durations::fast()
     } else {
-        Durations::standard()
+        Durations::default()
     };
     let mut peers = HashMap::<PeerId, PlayerId>::new();
     let mut player_peers = HashMap::<PlayerId, PeerId>::new();
     let mut sequences = HashMap::<PlayerId, u64>::new();
-    let mut observed_phase = game.phase.id;
-    let mut deadline = None;
+    let mut clock = PhaseClock::new(durations);
     let server_started = Instant::now();
     let mut rate_limiter = RateLimiter::default();
     let mut request_tracker = RequestTracker::default();
@@ -117,12 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     loop {
-        if game.phase.id != observed_phase {
-            observed_phase = game.phase.id;
-            deadline = durations
-                .for_phase(game.phase.kind)
-                .map(|duration| Instant::now() + duration);
-        }
+        clock.sync(game.phase, Instant::now());
         if game.outcome != MatchOutcome::InProgress {
             deliver_events(
                 &transport,
@@ -134,16 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::thread::sleep(Duration::from_millis(100));
             return Ok(());
         }
-        if deadline.is_some_and(|time| Instant::now() >= time) {
-            let mut events = game.apply_pending_forfeits();
-            if game.outcome == MatchOutcome::InProgress {
-                let phase_id = game.phase.id;
-                match game.phase.kind {
-                    PhaseKind::Night => events.extend(game.resolve_night()?.events),
-                    PhaseKind::Judgment => events.extend(game.resolve_judgment(phase_id)?.1),
-                    _ => events.extend(game.advance_phase(phase_id)?),
-                }
-            }
+        if clock.expired(Instant::now()) {
+            let events = advance_boundary(&mut game)?;
             deliver_events(
                 &transport,
                 &player_peers,
@@ -154,10 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        let wait = deadline
-            .and_then(|time| time.checked_duration_since(Instant::now()))
-            .unwrap_or(Duration::from_millis(100))
-            .min(Duration::from_millis(100));
+        let wait = clock.wait(Instant::now());
         let Some(event) = transport.recv_timeout(wait)? else {
             continue;
         };
