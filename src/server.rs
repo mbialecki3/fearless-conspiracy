@@ -135,7 +135,7 @@ pub const SERVER_USAGE: &str =
   [--duration PHASE=SECONDS]...
 Phases: role-reveal, day-one, night, dawn, discussion, nominations, defense,
         judgment, last-words. Seconds may be fractional (0.001 through 3600).
-Console: help, status, advance (manual mode only), abort.
+Console: help, status, advance (manual mode only), abort, shutdown.
 The console is the server's stdin; host controls are never client commands.";
 
 #[derive(Debug)]
@@ -269,6 +269,7 @@ pub enum HostCommand {
     Status,
     Advance,
     Abort,
+    Shutdown,
 }
 
 impl HostCommand {
@@ -278,7 +279,8 @@ impl HostCommand {
             "status" => Ok(Self::Status),
             "advance" => Ok(Self::Advance),
             "abort" => Ok(Self::Abort),
-            _ => Err("unknown host command; use help, status, advance, or abort"),
+            "shutdown" => Ok(Self::Shutdown),
+            _ => Err("unknown host command; use help, status, advance, abort, or shutdown"),
         }
     }
 }
@@ -286,6 +288,12 @@ impl HostCommand {
 /// Commit forfeits before resolving a boundary. If that cancels the trial,
 /// give the resumed phase its own deadline instead of advancing it again.
 pub fn advance_boundary(game: &mut Game) -> Result<Vec<GameEvent>, GameError> {
+    if game.outcome != MatchOutcome::InProgress {
+        return Err(GameError::WrongPhase {
+            expected: "an active match",
+            actual: game.phase.kind,
+        });
+    }
     let phase_id = game.phase.id;
     let mut events = game.apply_pending_forfeits();
     if game.outcome == MatchOutcome::InProgress && game.phase.id == phase_id {

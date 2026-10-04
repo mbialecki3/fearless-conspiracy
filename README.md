@@ -84,6 +84,14 @@ the selected mode and durations on joining; timers are inactive in manual mode.
 Timed nominations pause for trials and resume their remaining budget after
 acquittals or an accused player's forfeit.
 
+After a victory, draw, or abort, the server announces results once and keeps
+postgame open. Living and dead players can chat with everyone using `/say` or
+bare text, inspect their role/roster/will with read commands, and leave using
+`/quit`. Gameplay and personal text edits are frozen. The server exits after
+everyone leaves, or when the host enters `shutdown`. Shutting down an active
+match first records an abort. Shutdown drains queued output followed by a
+Closing frame, with a shared two-second limit for unresponsive peers.
+
 The client attaches the latest server-issued phase ID to every state-changing
 command. The server rejects stale commands, routes hidden events only to their
 authorized sockets, and advances authoritative timers without waiting for idle

@@ -24,7 +24,37 @@ pub fn dispatch(
             ..CommandOutput::default()
         });
     }
+    if game.phase.kind == PhaseKind::Ended {
+        if let Some(text) = input
+            .strip_prefix("/say ")
+            .or_else(|| (!input.starts_with('/')).then_some(input))
+        {
+            return Ok(events(vec![game.postgame_chat(actor, text, phase_id)?]));
+        }
+        let read_only = matches!(
+            input,
+            "/help"
+                | "/role"
+                | "/players"
+                | "/graveyard"
+                | "/history"
+                | "/will show"
+                | "/deathnote show"
+        ) || input.starts_with("/help ");
+        if !read_only {
+            return Err(GameError::WrongPhase {
+                expected: "postgame chat or read commands; gameplay is frozen",
+                actual: game.phase.kind,
+            });
+        }
+    }
     if input == "/help" {
+        if game.phase.kind == PhaseKind::Ended {
+            return Ok(private(
+                actor,
+                "Postgame: /say TEXT or bare text chats with everyone. Reads: /role, /players, /graveyard, /history, /will show, /deathnote show, /help ROLE. /quit leaves.",
+            ));
+        }
         return Ok(private(
             actor,
             "Commands: /ready, /role, /players, /say, /whisper, /vote, /unvote, /guilty, /innocent, /abstain, role night commands, /cancel, /will, /deathnote, /dead, /mafia, /quit.",
@@ -333,6 +363,62 @@ mod tests {
     use super::*;
     use crate::game::GameConfig;
     use crate::roles::Preset;
+
+    #[test]
+    fn postgame_allows_reads_and_shared_chat_but_freezes_mutations_and_results() {
+        let mut game =
+            Game::with_seed(GameConfig::scenario(Preset::Demo5.roles().to_vec()), 1).unwrap();
+        for uid in 1..=5 {
+            let id = game.join(uid, &format!("Player{uid}")).unwrap();
+            game.toggle_ready(id).unwrap();
+        }
+        game.start().unwrap();
+        game.player_mut(PlayerId(1)).unwrap().alive = false;
+        game.abort();
+        let phase = game.phase.id;
+        for actor in [PlayerId(1), PlayerId(2)] {
+            for input in ["good game", "/say hello"] {
+                let output = dispatch(&mut game, actor, phase, input).unwrap();
+                assert_eq!(output.events[0].channel, "postgame");
+                assert_eq!(output.events[0].recipients, Recipients::All);
+            }
+            for input in [
+                "/role",
+                "/players",
+                "/graveyard",
+                "/history",
+                "/will show",
+                "/deathnote show",
+                "/help",
+                "/help Doctor",
+            ] {
+                dispatch(&mut game, actor, phase, input).unwrap();
+            }
+            for input in [
+                "/ready",
+                "/vote 3",
+                "/unvote",
+                "/guilty",
+                "/cancel",
+                "/heal self",
+                "/will set changed",
+                "/deathnote set changed",
+                "/mafia private",
+                "/jail 3",
+            ] {
+                assert!(dispatch(&mut game, actor, phase, input).is_err(), "{input}");
+            }
+        }
+        assert!(dispatch(&mut game, PlayerId(2), phase - 1, "late chat").is_err());
+        assert!(game.set_will(PlayerId(2), "changed").is_err());
+        assert!(game.set_death_note(PlayerId(4), "changed").is_err());
+        let result = game.final_event();
+        game.mark_disconnected(PlayerId(2)).unwrap();
+        assert!(!game.player(PlayerId(2)).unwrap().pending_forfeit);
+        assert!(game.apply_pending_forfeits().is_empty());
+        assert_eq!(game.final_event(), result);
+        assert_eq!(game.phase.id, phase);
+    }
 
     #[test]
     fn parser_routes_ready_and_rejects_stale_phase() {

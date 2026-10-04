@@ -356,7 +356,18 @@ pub struct DeliveryReport {
 #[derive(Debug)]
 enum WriterCommand {
     Message(ServerMessage),
-    Close(String),
+    Close {
+        reason: String,
+        completed: Option<mpsc::Sender<(PeerId, bool)>>,
+    },
+}
+
+/// Drained means all queued frames and Closing were written to the socket,
+/// not that the remote application displayed or acknowledged them.
+#[derive(Debug, Default)]
+pub struct ShutdownReport {
+    pub drained: Vec<PeerId>,
+    pub failed: Vec<PeerId>,
 }
 
 #[derive(Debug)]
@@ -462,6 +473,7 @@ impl ServerTransport {
                                 let reserved_uids = Arc::clone(&reserved_uids);
                                 let incomplete = Arc::clone(&incomplete);
                                 let limits = limits.clone();
+                                let stop = Arc::clone(&stop);
                                 let _ = thread::Builder::new()
                                     .name(format!("salem-handshake-{}", peer.0))
                                     .spawn(move || {
@@ -475,6 +487,7 @@ impl ServerTransport {
                                             writers,
                                             reserved_uids,
                                             IncompleteHandshake(incomplete),
+                                            stop,
                                         );
                                     });
                             }
@@ -571,7 +584,10 @@ impl ServerTransport {
             let reason = reason.into();
             if writer
                 .sender
-                .try_send(WriterCommand::Close(reason))
+                .try_send(WriterCommand::Close {
+                    reason,
+                    completed: None,
+                })
                 .is_err()
             {
                 let _ = writer.shutdown.shutdown(std::net::Shutdown::Both);
@@ -595,6 +611,58 @@ impl ServerTransport {
             .keys()
             .copied()
             .collect()
+    }
+
+    /// Stop accepting, append Closing after existing output, and wait up to one
+    /// shared deadline for writers. Force-close only peers that cannot drain.
+    pub fn shutdown_gracefully(&mut self, reason: &str, timeout: Duration) -> ShutdownReport {
+        self.stop.store(true, Ordering::Release);
+        let deadline = Instant::now() + timeout;
+        let (completed_tx, completed_rx) = mpsc::channel();
+        let mut pending = HashSet::new();
+        let mut report = ShutdownReport::default();
+        {
+            let writers = self.writers.lock().expect("writers poisoned");
+            for (&peer, writer) in writers.iter() {
+                if writer
+                    .sender
+                    .try_send(WriterCommand::Close {
+                        reason: reason.into(),
+                        completed: Some(completed_tx.clone()),
+                    })
+                    .is_ok()
+                {
+                    pending.insert(peer);
+                } else {
+                    let _ = writer.shutdown.shutdown(std::net::Shutdown::Both);
+                    report.failed.push(peer);
+                }
+            }
+        }
+        drop(completed_tx);
+        while !pending.is_empty() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match completed_rx.recv_timeout(remaining) {
+                Ok((peer, success)) => {
+                    if pending.remove(&peer) {
+                        if success {
+                            report.drained.push(peer);
+                        } else {
+                            report.failed.push(peer);
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let writers = self.writers.lock().expect("writers poisoned");
+        for peer in pending {
+            if let Some(writer) = writers.get(&peer) {
+                let _ = writer.shutdown.shutdown(std::net::Shutdown::Both);
+            }
+            report.failed.push(peer);
+        }
+        report
     }
 }
 
@@ -651,6 +719,7 @@ fn handle_connection(
     writers: Arc<Mutex<HashMap<PeerId, WriterHandle>>>,
     reserved_uids: Arc<Mutex<HashSet<u32>>>,
     handshake: IncompleteHandshake,
+    stop: Arc<AtomicBool>,
 ) {
     let credentials = match peer_credentials(&stream) {
         Ok(credentials) => credentials,
@@ -727,13 +796,19 @@ fn handle_connection(
     };
     let (writer_tx, writer_rx) = mpsc::sync_channel(limits.outgoing_per_peer);
     let reported = Arc::new(AtomicBool::new(false));
-    writers.lock().expect("writers poisoned").insert(
+    let mut registered = writers.lock().expect("writers poisoned");
+    if stop.load(Ordering::Acquire) {
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+        return;
+    }
+    registered.insert(
         peer,
         WriterHandle {
             sender: writer_tx.clone(),
             shutdown,
         },
     );
+    drop(registered);
 
     let writer_lifecycle = lifecycle.clone();
     let writer_reported = Arc::clone(&reported);
@@ -746,8 +821,8 @@ fn handle_connection(
                     WriterCommand::Message(message) => {
                         write_socket_message(&mut writer_stream, &message, write_timeout)
                     }
-                    WriterCommand::Close(reason) => {
-                        let _ = write_socket_message(
+                    WriterCommand::Close { reason, completed } => {
+                        let written = write_socket_message(
                             &mut writer_stream,
                             &ServerMessage::Closing {
                                 reason: reason.clone(),
@@ -755,6 +830,9 @@ fn handle_connection(
                             write_timeout,
                         );
                         let _ = writer_stream.shutdown(std::net::Shutdown::Both);
+                        if let Some(completed) = completed {
+                            let _ = completed.send((peer, written.is_ok()));
+                        }
                         if !writer_reported.swap(true, Ordering::AcqRel) {
                             let _ = writer_lifecycle.send(LifecycleNotice { peer, reason });
                         }
@@ -1328,5 +1406,105 @@ mod tests {
             healthy.recv_timeout(Duration::from_secs(1)).unwrap(),
             Some(message)
         );
+    }
+
+    #[test]
+    fn graceful_shutdown_writes_all_queued_frames_before_closing() {
+        let path = socket_path("drain");
+        let limits = local_test_limits();
+        let mut server = ServerTransport::bind(&path, limits.clone()).unwrap();
+        let client = ClientTransport::connect(&path, "Reader", limits).unwrap();
+        let (peer, _) = connected_peer(&mut server);
+        for sequence in 1..=50 {
+            server
+                .send_to(
+                    peer,
+                    ServerMessage::Event {
+                        sequence,
+                        phase_id: 10,
+                        channel: "public_system".into(),
+                        text: format!("final event {sequence}"),
+                    },
+                )
+                .unwrap();
+        }
+        let report = server.shutdown_gracefully("test complete", Duration::from_secs(1));
+        assert_eq!(report.drained, vec![peer]);
+        assert!(report.failed.is_empty());
+        drop(server);
+        for expected in 1..=50 {
+            assert!(
+                matches!(client.recv_timeout(Duration::from_secs(1)).unwrap(),
+                Some(ServerMessage::Event { sequence, .. }) if sequence == expected)
+            );
+        }
+        assert_eq!(
+            client.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Some(ServerMessage::Closing {
+                reason: "test complete".into()
+            })
+        );
+    }
+
+    #[test]
+    fn graceful_shutdown_bounds_nonreader_wait_without_losing_healthy_output() {
+        let path = socket_path("drain-slow");
+        let limits = local_test_limits();
+        let mut server = ServerTransport::bind(&path, limits.clone()).unwrap();
+        let mut slow = UnixStream::connect(&path).unwrap();
+        write_message(
+            &mut slow,
+            &ClientMessage::Hello {
+                version: PROTOCOL_VERSION,
+                name: "Slow".into(),
+            },
+        )
+        .unwrap();
+        let _: ServerMessage = read_message(&mut slow).unwrap();
+        let (slow_peer, _) = connected_peer(&mut server);
+        {
+            let writers = server.writers.lock().unwrap();
+            nix::sys::socket::setsockopt(
+                &writers[&slow_peer].shutdown,
+                nix::sys::socket::sockopt::SndBuf,
+                &1024,
+            )
+            .unwrap();
+        }
+        let healthy = ClientTransport::connect(&path, "Healthy", limits).unwrap();
+        let (healthy_peer, _) = connected_peer(&mut server);
+        for sequence in 0..20 {
+            server
+                .send_to(
+                    slow_peer,
+                    ServerMessage::Event {
+                        sequence,
+                        phase_id: 0,
+                        channel: "test".into(),
+                        text: "x".repeat(60_000),
+                    },
+                )
+                .unwrap();
+        }
+        let final_result = ServerMessage::Event {
+            sequence: 1,
+            phase_id: 10,
+            channel: "public_system".into(),
+            text: "Final result".into(),
+        };
+        server.send_to(healthy_peer, final_result.clone()).unwrap();
+        let started = Instant::now();
+        let report = server.shutdown_gracefully("test complete", Duration::from_millis(100));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(report.drained, vec![healthy_peer]);
+        assert_eq!(report.failed, vec![slow_peer]);
+        assert_eq!(
+            healthy.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Some(final_result)
+        );
+        assert!(matches!(
+            healthy.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Some(ServerMessage::Closing { .. })
+        ));
     }
 }

@@ -60,25 +60,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server_started = Instant::now();
     let mut rate_limiter = RateLimiter::default();
     let mut request_tracker = RequestTracker::default();
+    let mut final_announced = false;
     println!(
         "Terminal Salem {} listening on {path}; waiting for {} players",
         preset.label(),
         game.config.expected_players()
     );
     println!("{}", options.announcement());
-    println!("Host console: help, status, advance (manual mode), abort.");
+    println!("Host console: help, status, advance (manual mode), abort, shutdown.");
 
     loop {
         clock.sync(game.phase, Instant::now());
-        if game.outcome != MatchOutcome::InProgress {
+        if game.outcome != MatchOutcome::InProgress && !final_announced {
             deliver_events(
                 &transport,
                 &player_peers,
                 &mut sequences,
                 game.phase.id,
-                vec![game.final_event()],
+                vec![game.final_event(), GameEvent {
+                    recipients: Recipients::All,
+                    channel: "public_system",
+                    text: "Postgame: everyone may chat using /say or bare text. Read commands remain available; gameplay is frozen. Use /quit to leave.".into(),
+                }],
             );
-            std::thread::sleep(Duration::from_millis(100));
+            final_announced = true;
+        }
+        if final_announced && player_peers.is_empty() {
+            transport.shutdown_gracefully("all players left postgame", Duration::from_secs(2));
             return Ok(());
         }
         if clock.expired(Instant::now()) {
@@ -124,6 +132,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         game.phase.id,
                         events,
                     );
+                }
+                Ok(HostCommand::Shutdown) => {
+                    if !final_announced {
+                        let mut events = game.abort();
+                        events.push(game.final_event());
+                        deliver_events(
+                            &transport,
+                            &player_peers,
+                            &mut sequences,
+                            game.phase.id,
+                            events,
+                        );
+                    }
+                    let report =
+                        transport.shutdown_gracefully("host shutdown", Duration::from_secs(2));
+                    if !report.failed.is_empty() {
+                        eprintln!(
+                            "Shutdown: {} peers disconnected before output could drain.",
+                            report.failed.len()
+                        );
+                    }
+                    return Ok(());
                 }
                 Err(error) => eprintln!("Host: {error}"),
             }
