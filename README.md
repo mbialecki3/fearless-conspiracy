@@ -55,6 +55,10 @@ Enter `/ready` in every client. The game starts when everyone is ready.
 Running `./client` without a name asks for one. The server and clients use
 `/tmp/fearless-conspiracy.sock` automatically.
 
+If a previous server crashed and left that socket behind, the next `./server`
+launch verifies that no server is listening and removes the stale socket
+automatically. A running server is never replaced.
+
 For predictable roles and manual phase control, use:
 
 ```bash
