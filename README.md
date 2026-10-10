@@ -127,10 +127,14 @@ Run `scripts/check.sh` for the complete compiler/test gate and
 coverage map is in [`docs/testing.md`](docs/testing.md). The distinct-user
 account, binary, and socket setup is in
 [`docs/multi-user-demo.md`](docs/multi-user-demo.md); validate it with
-`scripts/preflight-multi-user.sh`. Peer feedback and the PDF still require real
-classmates and screenshots; templates are provided in
+`scripts/preflight-multi-user.sh`. The
+[`requirements audit`](docs/requirements-audit.md) separates implemented code
+from evidence that still must be collected. Peer feedback and the PDF require
+real classmates and screenshots; templates are provided in
 [`docs/peer-feedback-template.md`](docs/peer-feedback-template.md) and
 [`docs/report-outline.md`](docs/report-outline.md) without fabricated evidence.
+After exporting the final report, use `scripts/package-submission.sh REPORT.pdf`
+to create and inspect the gzipped tar submission.
 
 Never put account passwords in this repository.
 
