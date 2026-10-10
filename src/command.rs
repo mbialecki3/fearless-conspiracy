@@ -86,11 +86,12 @@ pub fn dispatch(
         let player = game.player(actor)?;
         let text = match player.current_role {
             Some(role) => format!(
-                "You are the {} ({:?}). Self-heals: {}. Executions: {}. Role guide: /help {role:?}",
+                "You are the {} ({:?}). Self-heals: {}. Executions: {}. Role guide: /help {}",
                 role.display_name(),
                 role.faction(),
                 player.self_heals_remaining,
-                player.executions_remaining
+                player.executions_remaining,
+                role.display_name()
             ),
             None => "Your role has not been assigned yet.".into(),
         };
@@ -364,7 +365,7 @@ fn role_help(role: Role) -> &'static str {
             "Lookout — Town Investigative\nObjective: Track visits and compare them with player claims.\nAbility: Watch one other living player at night and learn up to three players who visited them.\nCommands: /watch ID, /cancel"
         }
         Role::TavernKeeper => {
-            "Tavern Keeper (Escort) — Town Support\nObjective: Disrupt suspicious players without blocking important Town abilities.\nAbility: Block one living player's night ability. You are immune to ordinary role blocking.\nCommands: /block ID, /cancel"
+            "Escort — Town Support\nObjective: Disrupt suspicious players without blocking important Town abilities.\nAbility: Block one living player's night ability. You are immune to ordinary role blocking.\nCommands: /block ID, /cancel"
         }
         Role::Jailor => {
             "Jailor — Town Killing\nObjective: Question suspicious players and execute confirmed threats.\nAbility: Select a prisoner during the day. At night, speak privately with the prisoner and choose whether to execute them. Night 1 executions are not allowed.\nCommands: /jail ID, /jailchat MESSAGE, /execute, /spare, /cancel"

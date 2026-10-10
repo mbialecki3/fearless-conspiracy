@@ -52,7 +52,7 @@ impl Role {
             Self::Sheriff => "Sheriff",
             Self::Doctor => "Doctor",
             Self::Lookout => "Lookout",
-            Self::TavernKeeper => "Tavern Keeper (Escort)",
+            Self::TavernKeeper => "Escort",
             Self::Jailor => "Jailor",
             Self::Godfather => "Godfather",
             Self::Mafioso => "Mafioso",
