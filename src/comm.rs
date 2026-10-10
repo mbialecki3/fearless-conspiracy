@@ -11,8 +11,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -417,12 +417,7 @@ pub struct ServerTransport {
 impl ServerTransport {
     pub fn bind(path: impl AsRef<Path>, limits: TransportLimits) -> Result<Self, CommError> {
         let path = path.as_ref().to_path_buf();
-        if fs::symlink_metadata(&path).is_ok() {
-            return Err(CommError::Protocol(format!(
-                "{} already exists; refusing to remove it",
-                path.display()
-            )));
-        }
+        prepare_socket_path(&path)?;
         let listener = UnixListener::bind(&path)?;
         fs::set_permissions(&path, fs::Permissions::from_mode(limits.socket_mode))?;
         let metadata = fs::symlink_metadata(&path)?;
@@ -667,6 +662,60 @@ impl ServerTransport {
         }
         report
     }
+}
+
+/// Remove a socket left behind by a dead server without overwriting arbitrary
+/// paths or interrupting a server that is still listening.
+fn prepare_socket_path(path: &Path) -> Result<(), CommError> {
+    let original = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if !original.file_type().is_socket() {
+        return Err(CommError::Protocol(format!(
+            "{} exists and is not a Unix socket; refusing to remove it",
+            path.display()
+        )));
+    }
+    if original.uid() != nix::unistd::Uid::current().as_raw() {
+        return Err(CommError::Protocol(format!(
+            "{} is owned by another Linux user; refusing to remove it",
+            path.display()
+        )));
+    }
+
+    match UnixStream::connect(path) {
+        Ok(stream) => {
+            drop(stream);
+            return Err(CommError::Protocol(format!(
+                "another server is already listening on {}",
+                path.display()
+            )));
+        }
+        Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(CommError::Protocol(format!(
+                "{} exists, but could not be confirmed stale: {error}",
+                path.display()
+            )));
+        }
+    }
+
+    let current = fs::symlink_metadata(path)?;
+    if !current.file_type().is_socket()
+        || current.dev() != original.dev()
+        || current.ino() != original.ino()
+        || current.uid() != original.uid()
+    {
+        return Err(CommError::Protocol(format!(
+            "{} changed while checking it; refusing to remove it",
+            path.display()
+        )));
+    }
+    fs::remove_file(path)?;
+    Ok(())
 }
 
 impl Drop for ServerTransport {
@@ -1086,6 +1135,48 @@ mod tests {
         let _server = ServerTransport::bind(&path, limits).unwrap();
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o666);
+    }
+
+    #[test]
+    fn stale_owned_socket_is_replaced_automatically() {
+        let path = socket_path("stale-recovery");
+        let stale = UnixListener::bind(&path).unwrap();
+        drop(stale);
+
+        let _server = ServerTransport::bind(&path, local_test_limits()).unwrap();
+        assert!(fs::symlink_metadata(&path).unwrap().file_type().is_socket());
+    }
+
+    #[test]
+    fn active_socket_is_never_replaced() {
+        let path = socket_path("active-protection");
+        let active = UnixListener::bind(&path).unwrap();
+        let original_inode = fs::symlink_metadata(&path).unwrap().ino();
+
+        let error = match ServerTransport::bind(&path, local_test_limits()) {
+            Err(error) => error,
+            Ok(_) => panic!("a second server replaced an active socket"),
+        };
+        assert!(error.to_string().contains("already listening"));
+        assert_eq!(fs::symlink_metadata(&path).unwrap().ino(), original_inode);
+
+        drop(active);
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn ordinary_existing_file_is_never_removed() {
+        let path = socket_path("ordinary-file-protection");
+        fs::write(&path, b"keep me").unwrap();
+
+        let error = match ServerTransport::bind(&path, local_test_limits()) {
+            Err(error) => error,
+            Ok(_) => panic!("the server replaced an ordinary file"),
+        };
+        assert!(error.to_string().contains("not a Unix socket"));
+        assert_eq!(fs::read(&path).unwrap(), b"keep me");
+
+        fs::remove_file(path).unwrap();
     }
 
     struct SmallChunks<R> {
