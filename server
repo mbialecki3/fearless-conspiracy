@@ -4,7 +4,7 @@ set -euo pipefail
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$project_root"
 
-socket_path="${SALEM_SOCKET:-/tmp/terminal-salem.sock}"
+socket_path="${FEARLESS_CONSPIRACY_SOCKET:-/tmp/fearless-conspiracy.sock}"
 strict_users=0
 server_args=()
 
@@ -12,7 +12,7 @@ usage() {
   cat <<'EOF'
 Usage: ./server [options]
 
-Local defaults: /tmp/terminal-salem.sock, Demo 5, same-UID clients allowed.
+Local defaults: /tmp/fearless-conspiracy.sock, Demo 5, same-UID clients allowed.
 
 Wrapper options:
   --socket PATH       Use another socket path.
@@ -57,5 +57,5 @@ if (( ! strict_users )); then
   server_args+=(--allow-same-uid)
 fi
 
-cargo build --quiet --bin salem-server
-exec target/debug/salem-server "$socket_path" "${server_args[@]}"
+cargo build --quiet --bin fearless-conspiracy-server
+exec target/debug/fearless-conspiracy-server "$socket_path" "${server_args[@]}"

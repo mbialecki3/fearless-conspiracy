@@ -8,7 +8,7 @@ usage() {
 
 [[ $# -ge 1 && $# -le 2 ]] || usage
 report_path="$1"
-output_path="${2:-terminal-salem-submission.tgz}"
+output_path="${2:-fearless-conspiracy-submission.tgz}"
 
 [[ -f "$report_path" ]] || {
   printf 'Report does not exist: %s\n' "$report_path" >&2
@@ -38,31 +38,31 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
-package_root="$(mktemp -d /tmp/terminal-salem-package.XXXXXX)"
+package_root="$(mktemp -d /tmp/fearless-conspiracy-package.XXXXXX)"
 cleanup() {
   case "$package_root" in
-    /tmp/terminal-salem-package.*) rm -r -- "$package_root" ;;
+    /tmp/fearless-conspiracy-package.*) rm -r -- "$package_root" ;;
   esac
 }
 trap cleanup EXIT
 
-git archive --format=tar --prefix=terminal-salem/ HEAD \
+git archive --format=tar --prefix=fearless-conspiracy/ HEAD \
   | tar -xf - -C "$package_root"
-cp -- "$report_path" "$package_root/terminal-salem/Terminal-Salem-Report.pdf"
+cp -- "$report_path" "$package_root/fearless-conspiracy/Fearless-Conspiracy-Report.pdf"
 
-if find "$package_root/terminal-salem" -type f \
+if find "$package_root/fearless-conspiracy" -type f \
   \( -iname '*.doc' -o -iname '*.docx' -o -iname '*.odt' -o -iname '*.pages' \) \
   | grep -q .; then
   printf 'Word-processing document found; only the PDF report may be submitted.\n' >&2
   exit 1
 fi
 
-pdf_count="$(find "$package_root/terminal-salem" -type f -iname '*.pdf' | wc -l)"
+pdf_count="$(find "$package_root/fearless-conspiracy" -type f -iname '*.pdf' | wc -l)"
 [[ "$pdf_count" -eq 1 ]] || {
   printf 'Expected exactly one PDF, found %s.\n' "$pdf_count" >&2
   exit 1
 }
 
-tar -czf "$output_path" -C "$package_root" terminal-salem
+tar -czf "$output_path" -C "$package_root" fearless-conspiracy
 tar -tzf "$output_path"
 printf 'Created %s from commit %s\n' "$output_path" "$(git rev-parse --short HEAD)"

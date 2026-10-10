@@ -1,7 +1,12 @@
-# Terminal Salem
+# Fearless Conspiracy
 
-Terminal Salem is a text-based social deduction game for five to nine players.
+Fearless Conspiracy is a text-based social deduction game for five to nine players.
 One terminal runs the server and each player uses a separate client terminal.
+
+> **Disclaimer:** Fearless Conspiracy is an independent student project based on
+> and inspired by social-deduction games such as Mafia, Town of Salem, and
+> Werewolf. It is not affiliated with, endorsed by, or associated with the
+> creators, publishers, or rights holders of those games.
 
 ## Install
 
@@ -37,7 +42,7 @@ Start one client in each of five other terminals:
 Enter `/ready` in every client. The game starts when everyone is ready.
 
 Running `./client` without a name asks for one. The server and clients use
-`/tmp/terminal-salem.sock` automatically.
+`/tmp/fearless-conspiracy.sock` automatically.
 
 For predictable roles and manual phase control, use:
 

@@ -1,15 +1,15 @@
+use fearless_conspiracy::comm::{
+    ClientMessage, PeerId, ServerEvent, ServerMessage, ServerTransport, TransportLimits,
+};
 use std::collections::HashMap;
 use std::env;
 use std::time::Duration;
-use terminal_salem::comm::{
-    ClientMessage, PeerId, ServerEvent, ServerMessage, ServerTransport, TransportLimits,
-};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut arguments = env::args().skip(1);
     let path = arguments
         .next()
-        .unwrap_or_else(|| "/run/terminal-salem/game.sock".into());
+        .unwrap_or_else(|| "/run/fearless-conspiracy/game.sock".into());
     let options: Vec<_> = arguments.collect();
     let allow_same_uid = options
         .iter()

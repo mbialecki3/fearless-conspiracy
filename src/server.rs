@@ -130,7 +130,7 @@ impl PhaseClock {
 }
 
 pub const SERVER_USAGE: &str =
-    "Usage: salem-server [SOCKET] [--preset demo5|standard7|standard8|full9]
+    "Usage: fearless-conspiracy-server [SOCKET] [--preset demo5|standard7|standard8|full9]
   [--scenario] [--manual] [--fast] [--allow-same-uid]
   [--duration PHASE=SECONDS]...
 Host commands: help, status, advance, abort, shutdown.";
@@ -148,7 +148,7 @@ pub struct ServerOptions {
 impl ServerOptions {
     pub fn parse(arguments: &[String]) -> Result<Self, String> {
         let mut options = Self {
-            path: "/run/terminal-salem/game.sock".into(),
+            path: "/run/fearless-conspiracy/game.sock".into(),
             preset: Preset::Demo5,
             scenario: false,
             manual: false,

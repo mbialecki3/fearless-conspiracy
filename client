@@ -4,7 +4,7 @@ set -euo pipefail
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$project_root"
 
-socket_path="${SALEM_SOCKET:-/tmp/terminal-salem.sock}"
+socket_path="${FEARLESS_CONSPIRACY_SOCKET:-/tmp/fearless-conspiracy.sock}"
 player_name=""
 client_args=()
 
@@ -13,7 +13,7 @@ usage() {
 Usage: ./client [NAME] [options]
 
 If NAME is omitted, the launcher asks for it. The default socket is
-/tmp/terminal-salem.sock.
+/tmp/fearless-conspiracy.sock.
 
 Options:
   --socket PATH       Use another socket path.
@@ -63,5 +63,5 @@ fi
 
 [[ -n "${player_name// }" ]] || { printf 'Player name cannot be empty.\n' >&2; exit 2; }
 
-cargo build --quiet --bin salem-client
-exec target/debug/salem-client "$socket_path" "$player_name" "${client_args[@]}"
+cargo build --quiet --bin fearless-conspiracy-client
+exec target/debug/fearless-conspiracy-client "$socket_path" "$player_name" "${client_args[@]}"

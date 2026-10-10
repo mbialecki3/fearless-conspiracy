@@ -1,3 +1,4 @@
+use fearless_conspiracy::comm::{ClientMessage, ClientTransport, ServerMessage, TransportLimits};
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, ExternalPrinter as _};
 use std::env;
@@ -6,7 +7,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
-use terminal_salem::comm::{ClientMessage, ClientTransport, ServerMessage, TransportLimits};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = env::args().skip(1).collect();
@@ -17,10 +17,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = positional
         .first()
         .map(|argument| argument.as_str())
-        .unwrap_or("/run/terminal-salem/game.sock");
+        .unwrap_or("/run/fearless-conspiracy/game.sock");
     let name = positional
         .get(1)
-        .ok_or("usage: salem-client [SOCKET] NAME [--plain]")?;
+        .ok_or("usage: fearless-conspiracy-client [SOCKET] NAME [--plain]")?;
     let client = ClientTransport::connect(path, name.as_str(), TransportLimits::default())?;
     println!("[IPC] {:?}", client.welcome());
     if arguments.iter().any(|argument| argument == "--plain") {

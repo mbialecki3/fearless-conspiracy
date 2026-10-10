@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-group_name="terminal-salem"
-runtime_dir="/run/terminal-salem"
+group_name="fearless-conspiracy"
+runtime_dir="/run/fearless-conspiracy"
 socket_path="${1:-}"
 failed=0
 
@@ -21,7 +21,7 @@ else
   fail "group $group_name is missing"
 fi
 
-for account in salem_host salem_p{1..9}; do
+for account in fearless_host fearless_p{1..9}; do
   if ! id "$account" >/dev/null 2>&1; then
     fail "account $account is missing"
     continue
@@ -37,9 +37,9 @@ if [[ -d "$runtime_dir" ]]; then
   runtime_owner="$(stat -c '%U' "$runtime_dir")"
   runtime_group="$(stat -c '%G' "$runtime_dir")"
   runtime_mode="$(stat -c '%a' "$runtime_dir")"
-  [[ "$runtime_owner" == "salem_host" ]] \
-    && pass "$runtime_dir owner is salem_host" \
-    || fail "$runtime_dir owner is $runtime_owner, expected salem_host"
+  [[ "$runtime_owner" == "fearless_host" ]] \
+    && pass "$runtime_dir owner is fearless_host" \
+    || fail "$runtime_dir owner is $runtime_owner, expected fearless_host"
   [[ "$runtime_group" == "$group_name" ]] \
     && pass "$runtime_dir group is $group_name" \
     || fail "$runtime_dir group is $runtime_group, expected $group_name"
@@ -50,7 +50,7 @@ else
   fail "$runtime_dir is missing"
 fi
 
-for binary in ipc-demo-server ipc-demo-client salem-server salem-client; do
+for binary in ipc-demo-server ipc-demo-client fearless-conspiracy-server fearless-conspiracy-client; do
   path="/usr/local/bin/$binary"
   if [[ ! -f "$path" ]]; then
     fail "$path is missing"
@@ -71,9 +71,9 @@ if [[ -n "$socket_path" ]]; then
     socket_owner="$(stat -c '%U' "$socket_path")"
     socket_group="$(stat -c '%G' "$socket_path")"
     socket_mode="$(stat -c '%a' "$socket_path")"
-    [[ "$socket_owner" == "salem_host" ]] \
-      && pass "$socket_path owner is salem_host" \
-      || fail "$socket_path owner is $socket_owner, expected salem_host"
+    [[ "$socket_owner" == "fearless_host" ]] \
+      && pass "$socket_path owner is fearless_host" \
+      || fail "$socket_path owner is $socket_owner, expected fearless_host"
     [[ "$socket_group" == "$group_name" ]] \
       && pass "$socket_path inherited group $group_name" \
       || fail "$socket_path group is $socket_group, expected $group_name"

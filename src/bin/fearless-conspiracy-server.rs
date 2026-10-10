@@ -1,20 +1,20 @@
+use fearless_conspiracy::comm::{
+    ClientMessage, PeerId, ServerEvent, ServerMessage, ServerTransport, TransportLimits,
+};
+use fearless_conspiracy::command;
+use fearless_conspiracy::game::{
+    Game, GameConfig, GameEvent, MatchOutcome, Phase, PhaseKind, PlayerId, Recipients,
+};
+use fearless_conspiracy::rate_limit::{RateDecision, RateLimiter, RequestTracker, is_chat_command};
+use fearless_conspiracy::server::{
+    HostCommand, PhaseClock, SERVER_USAGE, ServerOptions, advance_boundary,
+};
 use std::collections::HashMap;
 use std::env;
 use std::io::{self, BufRead};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
-use terminal_salem::comm::{
-    ClientMessage, PeerId, ServerEvent, ServerMessage, ServerTransport, TransportLimits,
-};
-use terminal_salem::command;
-use terminal_salem::game::{
-    Game, GameConfig, GameEvent, MatchOutcome, Phase, PhaseKind, PlayerId, Recipients,
-};
-use terminal_salem::rate_limit::{RateDecision, RateLimiter, RequestTracker, is_chat_command};
-use terminal_salem::server::{
-    HostCommand, PhaseClock, SERVER_USAGE, ServerOptions, advance_boundary,
-};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = env::args().skip(1).collect();
@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let (host_tx, host_rx) = mpsc::sync_channel(16);
     thread::Builder::new()
-        .name("salem-host-console".into())
+        .name("fearless-conspiracy-host-console".into())
         .spawn(move || {
             for line in io::stdin().lock().lines() {
                 let Ok(line) = line else { break };
@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut request_tracker = RequestTracker::default();
     let mut final_announced = false;
     println!(
-        "Terminal Salem {} listening on {path}; waiting for {} players",
+        "Fearless Conspiracy {} listening on {path}; waiting for {} players",
         preset.label(),
         game.config.expected_players()
     );
@@ -369,7 +369,9 @@ fn log_chat_events(events: &[GameEvent]) {
     }
 }
 
-fn advance_and_log(game: &mut Game) -> Result<Vec<GameEvent>, terminal_salem::game::GameError> {
+fn advance_and_log(
+    game: &mut Game,
+) -> Result<Vec<GameEvent>, fearless_conspiracy::game::GameError> {
     let previous = game.phase;
     let events = advance_boundary(game)?;
     println!(
@@ -446,7 +448,7 @@ fn deliver_events(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use terminal_salem::roles::Preset;
+    use fearless_conspiracy::roles::Preset;
 
     #[test]
     fn only_ready_and_chat_receive_visible_success_text() {
