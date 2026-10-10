@@ -1365,6 +1365,9 @@ impl Game {
                     role.display_name(),
                     role.faction()
                 );
+                text.push_str(&format!(
+                    " To learn how your role works and see its commands, enter: /help {role:?}"
+                ));
                 if role.faction() == Faction::Mafia {
                     let roster = mafia
                         .iter()
@@ -1573,7 +1576,12 @@ mod tests {
         );
         assert_eq!(events.len(), 5);
         for event in events {
-            assert!(matches!(event.recipients, Recipients::Players(ref ids) if ids.len() == 1));
+            let recipient = match &event.recipients {
+                Recipients::Players(ids) if ids.len() == 1 => *ids.iter().next().unwrap(),
+                _ => panic!("role reveal must have exactly one recipient"),
+            };
+            let role = game.player(recipient).unwrap().role().unwrap();
+            assert!(event.text.contains(&format!("/help {role:?}")));
         }
     }
 

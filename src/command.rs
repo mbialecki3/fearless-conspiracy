@@ -68,17 +68,11 @@ pub fn dispatch(
                     || format!("{role:?}").eq_ignore_ascii_case(role_name)
             })
             .ok_or_else(|| GameError::InvalidText(format!("unknown role {role_name:?}")))?;
-        return Ok(private(
-            actor,
-            &format!(
-                "{}: faction={:?}, night command={}, suspicious={}, basic defense={}.",
-                role.display_name(),
-                role.faction(),
-                role.night_command().unwrap_or("none"),
-                role.appears_suspicious(),
-                role.has_basic_defense()
-            ),
-        ));
+        let guide = format!(
+            "{}\nCommon commands: /role, /players, /say MESSAGE, /whisper ID MESSAGE, /will set TEXT, /will show, /help, /quit",
+            role_help(role)
+        );
+        return Ok(private(actor, &guide));
     }
     if input == "/ready" {
         ensure_lobby_phase(game, phase_id)?;
@@ -92,7 +86,7 @@ pub fn dispatch(
         let player = game.player(actor)?;
         let text = match player.current_role {
             Some(role) => format!(
-                "You are the {} ({:?}). Self-heals: {}. Executions: {}.",
+                "You are the {} ({:?}). Self-heals: {}. Executions: {}. Role guide: /help {role:?}",
                 role.display_name(),
                 role.faction(),
                 player.self_heals_remaining,
@@ -358,6 +352,38 @@ fn events(events: Vec<GameEvent>) -> CommandOutput {
     }
 }
 
+fn role_help(role: Role) -> &'static str {
+    match role {
+        Role::Sheriff => {
+            "Sheriff — Town Investigative\nObjective: Help Town identify and eliminate the Mafia.\nAbility: Investigate one living player at night. Suspicious results can identify a Mafioso or Framer, but framing can create false evidence and some roles appear innocent.\nCommands: /investigate ID, /cancel"
+        }
+        Role::Doctor => {
+            "Doctor — Town Protective\nObjective: Keep Town players alive while Town finds the Mafia.\nAbility: Heal one living player at night. You may heal yourself once per game.\nCommands: /heal ID, /heal self, /cancel"
+        }
+        Role::Lookout => {
+            "Lookout — Town Investigative\nObjective: Track visits and compare them with player claims.\nAbility: Watch one other living player at night and learn up to three players who visited them.\nCommands: /watch ID, /cancel"
+        }
+        Role::TavernKeeper => {
+            "Tavern Keeper (Escort) — Town Support\nObjective: Disrupt suspicious players without blocking important Town abilities.\nAbility: Block one living player's night ability. You are immune to ordinary role blocking.\nCommands: /block ID, /cancel"
+        }
+        Role::Jailor => {
+            "Jailor — Town Killing\nObjective: Question suspicious players and execute confirmed threats.\nAbility: Select a prisoner during the day. At night, speak privately with the prisoner and choose whether to execute them. Night 1 executions are not allowed.\nCommands: /jail ID, /jailchat MESSAGE, /execute, /spare, /cancel"
+        }
+        Role::Godfather => {
+            "Godfather — Mafia Killing\nObjective: Eliminate Town while hiding your identity.\nAbility: Choose the Mafia's target. If the Mafioso can act, they normally perform your ordered attack. You have Basic defense and appear innocent to the Sheriff.\nCommands: /kill ID, /cancel, /mafia MESSAGE, /deathnote set TEXT"
+        }
+        Role::Mafioso => {
+            "Mafioso — Mafia Killing\nObjective: Eliminate Town while protecting your Mafia teammates.\nAbility: Perform the Mafia attack. A Godfather's valid order takes priority over your fallback target.\nCommands: /kill ID, /cancel, /mafia MESSAGE, /deathnote set TEXT"
+        }
+        Role::Framer => {
+            "Framer — Mafia Deception\nObjective: Mislead Town investigations and help the Mafia survive.\nAbility: Frame one non-Mafia player at night so a Sheriff investigation reports them as suspicious.\nCommands: /frame ID, /cancel, /mafia MESSAGE"
+        }
+        Role::Jester => {
+            "Jester — Neutral Evil\nObjective: Convince the Town to convict and publicly execute you.\nAbility: After your execution, haunt an eligible living player who voted guilty or abstained.\nCommands after execution: /haunt ID, /cancel"
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,5 +466,16 @@ mod tests {
             dispatch(&mut game, player, 0, "/does-not-exist"),
             Err(GameError::InvalidText(_))
         ));
+    }
+
+    #[test]
+    fn every_role_guide_explains_its_objective_and_commands() {
+        for role in Role::ALL {
+            let guide = role_help(role);
+            assert!(guide.contains(role.display_name()), "{role:?}");
+            assert!(guide.contains("Objective:"), "{role:?}");
+            assert!(guide.contains("Commands"), "{role:?}");
+            assert!(guide.contains('/'), "{role:?}");
+        }
     }
 }
