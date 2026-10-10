@@ -29,6 +29,17 @@ Start the server in one terminal:
 ./server
 ```
 
+If the server and clients run under different Linux accounts, start the server
+with shared-local socket access:
+
+```bash
+./server --shared-local
+```
+
+This makes the local Unix socket accessible to every user on the machine. Use
+it only on a trusted system; the normal `./server` command restricts socket
+access to the server owner and group.
+
 Start one client in each of five other terminals:
 
 ```bash

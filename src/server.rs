@@ -131,7 +131,7 @@ impl PhaseClock {
 
 pub const SERVER_USAGE: &str =
     "Usage: fearless-conspiracy-server [SOCKET] [--preset demo5|standard7|standard8|full9]
-  [--scenario] [--manual] [--fast] [--allow-same-uid]
+  [--scenario] [--manual] [--fast] [--allow-same-uid] [--shared-local]
   [--duration PHASE=SECONDS]...
 Host commands: help, status, advance, abort, shutdown.";
 
@@ -142,6 +142,7 @@ pub struct ServerOptions {
     pub scenario: bool,
     pub manual: bool,
     pub allow_same_uid: bool,
+    pub shared_local: bool,
     pub durations: Durations,
 }
 
@@ -153,6 +154,7 @@ impl ServerOptions {
             scenario: false,
             manual: false,
             allow_same_uid: false,
+            shared_local: false,
             durations: Durations::default(),
         };
         let mut path_set = false;
@@ -163,6 +165,7 @@ impl ServerOptions {
                 "--scenario" => options.scenario = true,
                 "--manual" => options.manual = true,
                 "--allow-same-uid" => options.allow_same_uid = true,
+                "--shared-local" => options.shared_local = true,
                 "--fast" => options.durations = Durations::fast(),
                 "--preset" => {
                     options.preset = match arguments.next().map(String::as_str) {
@@ -234,7 +237,7 @@ impl ServerOptions {
         .collect::<Vec<_>>()
         .join(", ");
         format!(
-            "Match settings: {}; {}; {}. {} Phase durations: {times}{}.",
+            "Match settings: {}; {}; {}. {} {} Phase durations: {times}{}.",
             self.preset.label(),
             if self.scenario {
                 "SCENARIO: predetermined roles"
@@ -250,6 +253,11 @@ impl ServerOptions {
                 "TEST ONLY: separate-UID checks disabled."
             } else {
                 "Distinct Linux UIDs required."
+            },
+            if self.shared_local {
+                "SHARED LOCAL: the socket permits connections from any local user."
+            } else {
+                "PRIVATE SOCKET: owner/group access only."
             },
             if self.manual {
                 " (inactive in manual mode)"
@@ -345,6 +353,17 @@ mod tests {
                     .is_err()
             );
         }
+    }
+
+    #[test]
+    fn shared_local_is_explicit_and_announced() {
+        let default = ServerOptions::parse(&[]).unwrap();
+        assert!(!default.shared_local);
+
+        let shared = ServerOptions::parse(&["--shared-local".into()]).unwrap();
+        assert!(shared.shared_local);
+        assert!(shared.announcement().contains("any local user"));
+        assert!(SERVER_USAGE.contains("--shared-local"));
     }
 
     #[test]
