@@ -124,14 +124,15 @@ input and automated transcripts.
 
 Run `scripts/check.sh` for the complete compiler/test gate and
 `scripts/smoke-game.sh` for a five-client end-to-end process test. The detailed
-coverage map is in [`docs/testing.md`](docs/testing.md). Peer feedback and the
-PDF still require real classmates and screenshots; templates are provided in
+coverage map is in [`docs/testing.md`](docs/testing.md). The distinct-user
+account, binary, and socket setup is in
+[`docs/multi-user-demo.md`](docs/multi-user-demo.md); validate it with
+`scripts/preflight-multi-user.sh`. Peer feedback and the PDF still require real
+classmates and screenshots; templates are provided in
 [`docs/peer-feedback-template.md`](docs/peer-feedback-template.md) and
 [`docs/report-outline.md`](docs/report-outline.md) without fabricated evidence.
 
-Runtime account and socket-directory setup will be documented before the
-multi-user integration milestone. Never put account passwords in this
-repository.
+Never put account passwords in this repository.
 
 ## Milestones
 
