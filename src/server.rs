@@ -133,10 +133,7 @@ pub const SERVER_USAGE: &str =
     "Usage: salem-server [SOCKET] [--preset demo5|standard7|standard8|full9]
   [--scenario] [--manual] [--fast] [--allow-same-uid]
   [--duration PHASE=SECONDS]...
-Phases: role-reveal, day-one, night, dawn, discussion, nominations, defense,
-        judgment, last-words. Seconds may be fractional (0.001 through 3600).
-Console: help, status, advance (manual mode only), abort, shutdown.
-The console is the server's stdin; host controls are never client commands.";
+Host commands: help, status, advance, abort, shutdown.";
 
 #[derive(Debug)]
 pub struct ServerOptions {
