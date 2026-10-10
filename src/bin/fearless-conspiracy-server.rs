@@ -333,11 +333,18 @@ fn success_reply_text(game: &Game, player: PlayerId, command: &str) -> String {
             .map(|player| if player.ready { "ready" } else { "not ready" })
             .unwrap_or("unknown");
         format!("Ready status confirmed: {status}.")
+    } else if is_public_chat_command(command) {
+        "accepted".into()
     } else if is_chat_command(command) {
         "Message delivered.".into()
     } else {
         "accepted".into()
     }
+}
+
+fn is_public_chat_command(command: &str) -> bool {
+    let command = command.trim();
+    !command.starts_with('/') || command.starts_with("/say ")
 }
 
 fn readiness_log_line(game: &Game, player: PlayerId) -> Option<String> {
@@ -449,13 +456,18 @@ mod tests {
     use fearless_conspiracy::roles::Preset;
 
     #[test]
-    fn only_ready_and_chat_receive_visible_success_text() {
+    fn public_chat_is_silent_while_ready_and_direct_chat_are_confirmed() {
         let mut game = Game::with_seed(GameConfig::ordinary(Preset::Demo5), 1).unwrap();
         let player = game.join(1001, "Alice").unwrap();
 
         assert_eq!(success_reply_text(&game, player, "/role"), "accepted");
         assert_eq!(
             success_reply_text(&game, player, "hello everyone"),
+            "accepted"
+        );
+        assert_eq!(success_reply_text(&game, player, "/say hello"), "accepted");
+        assert_eq!(
+            success_reply_text(&game, player, "/whisper 2 hello"),
             "Message delivered."
         );
 
