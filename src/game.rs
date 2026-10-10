@@ -471,7 +471,9 @@ impl Game {
                 self.nominations.clear();
                 self.trials_today = 0;
                 self.move_to(PhaseKind::Nominations, self.phase.day);
-                Ok(vec![self.phase_event("Nominations are open.")])
+                let mut events = vec![self.phase_event("Nominations are open.")];
+                events.extend(self.nomination_guidance_events());
+                Ok(events)
             }
             PhaseKind::Nominations => {
                 let mut events = self.begin_night();
@@ -484,9 +486,10 @@ impl Game {
             PhaseKind::Defense => {
                 self.judgments.clear();
                 self.move_to(PhaseKind::Judgment, self.phase.day);
-                Ok(vec![self.phase_event(
-                    "Judgment voting is open; the accused cannot vote.",
-                )])
+                let mut events =
+                    vec![self.phase_event("Judgment voting is open; the accused cannot vote.")];
+                events.extend(self.judgment_guidance_events());
+                Ok(events)
             }
             PhaseKind::LastWords => self.execute_accused(),
             PhaseKind::Lobby => Err(GameError::MatchNotStarted),
@@ -546,6 +549,11 @@ impl Game {
             events.push(self.phase_event(&format!(
                 "{target} is on trial and may now speak in defense."
             )));
+            events.push(GameEvent {
+                recipients: Recipients::only(target),
+                channel: "private_system",
+                text: "You are on trial. Defend yourself with plain text or /say MESSAGE. You can update your will with /will set TEXT.".into(),
+            });
         }
         Ok(events)
     }
@@ -647,6 +655,7 @@ impl Game {
                 } else {
                     self.move_to(PhaseKind::Nominations, self.phase.day);
                     events.push(self.phase_event("The accused was acquitted. Nominations resume."));
+                    events.extend(self.nomination_guidance_events());
                 }
             }
         }
@@ -1256,41 +1265,141 @@ impl Game {
         let prisoner = self
             .jail_selection
             .filter(|target| self.players.get(target).is_some_and(|player| player.alive));
-        let (Some(jailor), Some(prisoner)) = (jailor, prisoner) else {
-            return Vec::new();
-        };
-        self.jailed = Some((jailor, prisoner));
-        let mut events = vec![
-            GameEvent {
-                recipients: Recipients::only(jailor),
-                channel: "private_system",
-                text: format!("You jailed {prisoner}. Use /execute or /spare."),
-            },
-            GameEvent {
-                recipients: Recipients::only(prisoner),
-                channel: "private_system",
-                text:
-                    "You were jailed. Your ordinary ability is suppressed; use /jailchat to speak."
-                        .into(),
-            },
-        ];
-        if self
-            .player(prisoner)
-            .is_ok_and(|player| player.faction == Some(Faction::Mafia))
-        {
-            let mafia = self
-                .players
-                .values()
-                .filter(|player| player.alive && player.faction == Some(Faction::Mafia))
-                .map(|player| player.id)
-                .collect();
-            events.push(GameEvent {
-                recipients: Recipients::Players(mafia),
-                channel: "mafia_system",
-                text: format!("Mafia teammate {prisoner} was jailed and may listen but not reply."),
-            });
+        let mut events = Vec::new();
+        if let (Some(jailor), Some(prisoner)) = (jailor, prisoner) {
+            self.jailed = Some((jailor, prisoner));
+            events.extend([
+                GameEvent {
+                    recipients: Recipients::only(jailor),
+                    channel: "private_system",
+                    text: format!("You jailed {prisoner}. Use /execute or /spare."),
+                },
+                GameEvent {
+                    recipients: Recipients::only(prisoner),
+                    channel: "private_system",
+                    text: "You were jailed. Your ordinary ability is suppressed; use /jailchat MESSAGE to speak with the Jailor.".into(),
+                },
+            ]);
+            if self
+                .player(prisoner)
+                .is_ok_and(|player| player.faction == Some(Faction::Mafia))
+            {
+                let mafia = self
+                    .players
+                    .values()
+                    .filter(|player| player.alive && player.faction == Some(Faction::Mafia))
+                    .map(|player| player.id)
+                    .collect();
+                events.push(GameEvent {
+                    recipients: Recipients::Players(mafia),
+                    channel: "mafia_system",
+                    text: format!(
+                        "Mafia teammate {prisoner} was jailed and may listen but not reply."
+                    ),
+                });
+            }
         }
+        events.extend(self.night_guidance_events());
         events
+    }
+
+    fn nomination_guidance_events(&self) -> Vec<GameEvent> {
+        self.players
+            .values()
+            .filter(|player| player.alive)
+            .map(|player| {
+                let role_hint = if player.current_role == Some(Role::Jailor) {
+                    " Jailor command: /jail ID selects tonight's prisoner."
+                } else {
+                    ""
+                };
+                GameEvent {
+                    recipients: Recipients::only(player.id),
+                    channel: "private_system",
+                    text: format!(
+                        "Nominations are open. Commands: /players to find IDs, /vote ID, /unvote, plain text or /say MESSAGE, and /whisper ID MESSAGE.{role_hint}"
+                    ),
+                }
+            })
+            .collect()
+    }
+
+    fn judgment_guidance_events(&self) -> Vec<GameEvent> {
+        self.players
+            .values()
+            .filter(|player| player.alive)
+            .map(|player| {
+                let jail_hint = if player.current_role == Some(Role::Jailor) {
+                    " You may also use /jail ID to select tonight's prisoner."
+                } else {
+                    ""
+                };
+                let text = if self.accused == Some(player.id) {
+                    "You are the accused and cannot vote during judgment. Wait for the verdict."
+                        .into()
+                } else {
+                    format!(
+                        "Judgment voting is open. Commands: /guilty, /innocent, or /abstain. Use /players to review player IDs.{jail_hint}"
+                    )
+                };
+                GameEvent {
+                    recipients: Recipients::only(player.id),
+                    channel: "private_system",
+                    text,
+                }
+            })
+            .collect()
+    }
+
+    fn night_guidance_events(&self) -> Vec<GameEvent> {
+        self.players
+            .values()
+            .map(|player| {
+                let text = if !player.alive {
+                    if self
+                        .pending_haunt
+                        .as_ref()
+                        .is_some_and(|haunt| haunt.jester == player.id)
+                    {
+                        "Night commands: /haunt ID to choose an eligible voter, /cancel to clear that choice, and /dead MESSAGE to talk to other dead players. Use /players to find IDs.".into()
+                    } else {
+                        "You are dead. Night command: /dead MESSAGE to talk to other dead players. You may also use /players, /role, and /help ROLE.".into()
+                    }
+                } else if self
+                    .jailed
+                    .is_some_and(|(_, prisoner)| prisoner == player.id)
+                {
+                    "You are jailed, so your ordinary night ability and outgoing faction chat are unavailable. Commands: /jailchat MESSAGE, /role, /players, and /help ROLE.".into()
+                } else {
+                    let role = player.current_role.expect("night begins after roles are assigned");
+                    let role_commands = match role {
+                        Role::Sheriff => "/investigate ID or /cancel",
+                        Role::Doctor => "/heal ID, /heal self, or /cancel",
+                        Role::Lookout => "/watch ID or /cancel",
+                        Role::TavernKeeper => "/block ID or /cancel",
+                        Role::Jailor if self.jailed.is_some_and(|(jailor, _)| jailor == player.id) => {
+                            "/execute, /spare, /cancel, or /jailchat MESSAGE"
+                        }
+                        Role::Jailor => "no night action (select a prisoner with /jail ID during the day)",
+                        Role::Godfather | Role::Mafioso => {
+                            "/kill ID, /cancel, /mafia MESSAGE, or /deathnote set TEXT"
+                        }
+                        Role::Framer => "/frame ID, /cancel, or /mafia MESSAGE",
+                        Role::Jester => "no ordinary night action",
+                    };
+                    format!(
+                        "Night commands for your {} role: {role_commands}. Basic commands: /players to find IDs, /role, /help {}, and /will set TEXT.",
+                        role.display_name(),
+                        role.display_name()
+                    )
+                };
+                GameEvent {
+                    recipients: Recipients::only(player.id),
+                    channel: "private_system",
+                    text,
+                }
+            })
+            .collect()
     }
 
     fn nomination_count(&self, target: PlayerId) -> usize {
@@ -1643,6 +1752,74 @@ mod tests {
             game.say(PlayerId(1), "late", role_reveal),
             Err(GameError::StalePhase { .. })
         ));
+    }
+
+    #[test]
+    fn night_guidance_is_private_and_role_specific() {
+        let mut game = ready_demo_game();
+        game.start().unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        let events = game.advance_phase(game.phase.id).unwrap();
+
+        let guidance_for = |id| {
+            events
+                .iter()
+                .find(|event| {
+                    event.recipients == Recipients::only(id)
+                        && event.channel == "private_system"
+                        && event.text.contains("Night commands")
+                })
+                .expect("every player receives private night guidance")
+                .text
+                .as_str()
+        };
+
+        let sheriff = guidance_for(PlayerId(1));
+        assert!(sheriff.contains("/investigate ID"));
+        assert!(!sheriff.contains("/kill ID"));
+        assert!(!sheriff.contains("/mafia"));
+
+        let mafioso = guidance_for(PlayerId(4));
+        assert!(mafioso.contains("/kill ID"));
+        assert!(mafioso.contains("/mafia MESSAGE"));
+        assert!(!mafioso.contains("/investigate ID"));
+
+        let jester = guidance_for(PlayerId(5));
+        assert!(jester.contains("no ordinary night action"));
+        assert!(!jester.contains("/kill ID"));
+    }
+
+    #[test]
+    fn voting_phases_explain_available_commands_privately() {
+        let mut game = ready_demo_game();
+        game.start().unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        game.finish_night_for_test_or_resolver().unwrap();
+        game.advance_phase(game.phase.id).unwrap();
+        let nomination_events = game.advance_phase(game.phase.id).unwrap();
+        for id in (1..=5).map(PlayerId) {
+            assert!(nomination_events.iter().any(|event| {
+                event.recipients == Recipients::only(id)
+                    && event.channel == "private_system"
+                    && event.text.contains("/vote ID")
+                    && event.text.contains("/players")
+            }));
+        }
+
+        let phase = game.phase.id;
+        for voter in [PlayerId(1), PlayerId(2), PlayerId(3)] {
+            game.nominate(voter, PlayerId(4), phase).unwrap();
+        }
+        let judgment_events = game.advance_phase(game.phase.id).unwrap();
+        assert!(judgment_events.iter().any(|event| {
+            event.recipients == Recipients::only(PlayerId(1)) && event.text.contains("/guilty")
+        }));
+        assert!(judgment_events.iter().any(|event| {
+            event.recipients == Recipients::only(PlayerId(4))
+                && event.text.contains("cannot vote")
+                && !event.text.contains("/guilty")
+        }));
     }
 
     #[test]
