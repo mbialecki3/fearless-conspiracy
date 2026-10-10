@@ -9,7 +9,7 @@ use terminal_salem::comm::{
 };
 use terminal_salem::command;
 use terminal_salem::game::{
-    Game, GameConfig, GameEvent, MatchOutcome, PhaseKind, PlayerId, Recipients,
+    Game, GameConfig, GameEvent, MatchOutcome, Phase, PhaseKind, PlayerId, Recipients,
 };
 use terminal_salem::rate_limit::{RateDecision, RateLimiter, RequestTracker, is_chat_command};
 use terminal_salem::server::{
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
         if clock.expired(Instant::now()) {
-            let events = advance_boundary(&mut game)?;
+            let events = advance_and_log(&mut game)?;
             deliver_events(
                 &transport,
                 &player_peers,
@@ -111,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     game.outcome,
                     player_peers.len()
                 ),
-                Ok(HostCommand::Advance) if options.manual => match advance_boundary(&mut game) {
+                Ok(HostCommand::Advance) if options.manual => match advance_and_log(&mut game) {
                     Ok(events) => deliver_events(
                         &transport,
                         &player_peers,
@@ -274,6 +274,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             transport.disconnect(peer, "requested by player");
                         } else if game.can_start() {
                             let events = game.start()?;
+                            print_role_roster(&game);
                             deliver_events(
                                 &transport,
                                 &player_peers,
@@ -314,6 +315,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+    }
+}
+
+fn advance_and_log(game: &mut Game) -> Result<Vec<GameEvent>, terminal_salem::game::GameError> {
+    let previous = game.phase;
+    let events = advance_boundary(game)?;
+    println!(
+        "Scene: {} -> {}",
+        scene_label(previous),
+        scene_label(game.phase)
+    );
+    Ok(events)
+}
+
+fn print_role_roster(game: &Game) {
+    println!("Game started. Player roles:");
+    for player in game.players.values() {
+        let role = player
+            .current_role
+            .map(|role| role.display_name())
+            .unwrap_or("Unassigned");
+        println!("  {} {}: {role}", player.id, player.name);
+    }
+    println!("Current scene: {}", scene_label(game.phase));
+}
+
+fn scene_label(phase: Phase) -> String {
+    let name = match phase.kind {
+        PhaseKind::Lobby => "Lobby",
+        PhaseKind::RoleReveal => "Role Reveal",
+        PhaseKind::DayOne => "Day 1 Introductions",
+        PhaseKind::Night => "Night",
+        PhaseKind::Dawn => "Dawn",
+        PhaseKind::Discussion => "Discussion",
+        PhaseKind::Nominations => "Nominations",
+        PhaseKind::Defense => "Defense",
+        PhaseKind::Judgment => "Judgment",
+        PhaseKind::LastWords => "Last Words",
+        PhaseKind::Ended => "Game Ended",
+    };
+    match phase.kind {
+        PhaseKind::Lobby | PhaseKind::Ended => name.into(),
+        _ => format!("{name} (Day {})", phase.day),
     }
 }
 
