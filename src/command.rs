@@ -68,10 +68,7 @@ pub fn dispatch(
                     || format!("{role:?}").eq_ignore_ascii_case(role_name)
             })
             .ok_or_else(|| GameError::InvalidText(format!("unknown role {role_name:?}")))?;
-        let guide = format!(
-            "{}\nCommon commands: /role, /players, /say MESSAGE, /whisper ID MESSAGE, /will set TEXT, /will show, /help, /quit",
-            role_help(role)
-        );
+        let guide = full_role_help(role);
         return Ok(private(actor, &guide));
     }
     if input == "/ready" {
@@ -385,6 +382,13 @@ fn role_help(role: Role) -> &'static str {
     }
 }
 
+fn full_role_help(role: Role) -> String {
+    format!(
+        "{}\nTarget IDs: run /players to see every player's ID, then use that number in commands such as /watch ID or /investigate ID.\nCommon commands: /role, /players, /say MESSAGE, /whisper ID MESSAGE, /will set TEXT, /will show, /help, /quit",
+        role_help(role)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,11 +476,12 @@ mod tests {
     #[test]
     fn every_role_guide_explains_its_objective_and_commands() {
         for role in Role::ALL {
-            let guide = role_help(role);
+            let guide = full_role_help(role);
             assert!(guide.contains(role.display_name()), "{role:?}");
             assert!(guide.contains("Objective:"), "{role:?}");
             assert!(guide.contains("Commands"), "{role:?}");
             assert!(guide.contains('/'), "{role:?}");
+            assert!(guide.contains("run /players"), "{role:?}");
         }
     }
 }
