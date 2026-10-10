@@ -90,7 +90,7 @@ daytime discussion and becomes Mafia or jail chat at night when applicable.
 | Sheriff | `/investigate ID` | Check whether someone appears suspicious. |
 | Doctor | `/heal ID` or `/heal self` | Protect someone from an attack. |
 | Lookout | `/watch ID` | See who visited someone. |
-| Tavern Keeper | `/block ID` | Stop someone's night ability. |
+| Escort | `/block ID` | Stop someone's night ability. |
 | Jailor | `/jail ID`, `/execute`, `/spare` | Detain and question someone. |
 | Godfather | `/kill ID` | Choose the Mafia target. |
 | Mafioso | `/kill ID` | Perform the Mafia attack. |
