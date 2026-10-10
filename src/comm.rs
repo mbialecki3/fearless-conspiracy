@@ -1,4 +1,4 @@
-//! All interprocess transport for Terminal Salem.
+//! All interprocess transport for Fearless Conspiracy.
 //!
 //! Unix domain stream sockets carry bytes, not messages. This module gives the
 //! byte stream application-level boundaries: a four-byte, big-endian length
@@ -443,7 +443,7 @@ impl ServerTransport {
             let reserved_uids = Arc::clone(&reserved_uids);
             let stop = Arc::clone(&stop);
             thread::Builder::new()
-                .name("salem-accept".into())
+                .name("fearless-conspiracy-accept".into())
                 .spawn(move || {
                     while !stop.load(Ordering::Acquire) {
                         match listener.accept() {
@@ -475,7 +475,7 @@ impl ServerTransport {
                                 let limits = limits.clone();
                                 let stop = Arc::clone(&stop);
                                 let _ = thread::Builder::new()
-                                    .name(format!("salem-handshake-{}", peer.0))
+                                    .name(format!("fearless-conspiracy-handshake-{}", peer.0))
                                     .spawn(move || {
                                         handle_connection(
                                             stream,
@@ -814,7 +814,7 @@ fn handle_connection(
     let writer_reported = Arc::clone(&reported);
     let write_timeout = limits.write_timeout;
     let _ = thread::Builder::new()
-        .name(format!("salem-write-{}", peer.0))
+        .name(format!("fearless-conspiracy-write-{}", peer.0))
         .spawn(move || {
             while let Ok(command) = writer_rx.recv() {
                 let result = match command {
@@ -962,7 +962,7 @@ impl ClientTransport {
         let write_timeout = limits.write_timeout;
         let frame_timeout = limits.frame_timeout;
         let _ = thread::Builder::new()
-            .name("salem-client-write".into())
+            .name("fearless-conspiracy-client-write".into())
             .spawn(move || {
                 while let Ok(message) = writer_rx.recv() {
                     let closing = matches!(message, ClientMessage::Close);
@@ -975,7 +975,7 @@ impl ClientTransport {
                 }
             });
         let _ = thread::Builder::new()
-            .name("salem-client-read".into())
+            .name("fearless-conspiracy-client-read".into())
             .spawn(move || {
                 loop {
                     match read_socket_message(&mut reader_stream, None, frame_timeout) {
@@ -1049,7 +1049,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!(
-            "terminal-salem-{label}-{}-{nonce}.sock",
+            "fearless-conspiracy-{label}-{}-{nonce}.sock",
             std::process::id()
         ))
     }

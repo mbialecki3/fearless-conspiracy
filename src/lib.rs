@@ -1,4 +1,4 @@
-//! Terminal Salem's reusable transport and game engine.
+//! Fearless Conspiracy's reusable transport and game engine.
 
 pub mod comm;
 pub mod command;

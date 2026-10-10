@@ -1,15 +1,15 @@
+use fearless_conspiracy::comm::{ClientMessage, ClientTransport, TransportLimits};
 use std::env;
 use std::io::{self, BufRead};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use terminal_salem::comm::{ClientMessage, ClientTransport, TransportLimits};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut arguments = env::args().skip(1);
     let path = arguments
         .next()
-        .unwrap_or_else(|| "/run/terminal-salem/game.sock".into());
+        .unwrap_or_else(|| "/run/fearless-conspiracy/game.sock".into());
     let name = arguments.next().unwrap_or_else(|| "Player".into());
     let client = ClientTransport::connect(path, name, TransportLimits::default())?;
     println!("{:?}", client.welcome());

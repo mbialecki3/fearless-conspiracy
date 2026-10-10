@@ -1,9 +1,9 @@
 [package]
-name = "terminal-salem"
+name = "fearless-conspiracy"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-description = "A Unix-domain-socket IPC game inspired by classic Salem"
+description = "A Unix-domain-socket social-deduction game inspired by Mafia and Werewolf"
 license = "MIT"
 
 [dependencies]
