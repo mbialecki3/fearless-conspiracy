@@ -182,7 +182,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     player_peers.insert(player, peer);
                     sequences.insert(player, 0);
                     println!("{player} {name} joined the lobby.");
-                    print_lobby_readiness(&game);
                     let joined = vec![
                         GameEvent {
                             recipients: Recipients::only(player),
@@ -274,8 +273,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 text: success_reply_text(&game, player, &text),
                             },
                         );
-                        if text.trim() == "/ready" {
-                            print_lobby_readiness(&game);
+                        if text.trim() == "/ready"
+                            && let Some(line) = readiness_log_line(&game, player)
+                        {
+                            println!("{line}");
                         }
                         if output.quit {
                             transport.disconnect(peer, "requested by player");
@@ -316,7 +317,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Ok(uid) = game.leave_lobby(player) {
                             transport.release_uid(uid);
                         }
-                        print_lobby_readiness(&game);
                     } else {
                         game.mark_disconnected(player)?;
                     }
@@ -340,23 +340,19 @@ fn success_reply_text(game: &Game, player: PlayerId, command: &str) -> String {
     }
 }
 
-fn print_lobby_readiness(game: &Game) {
+fn readiness_log_line(game: &Game, player: PlayerId) -> Option<String> {
     if game.phase.kind != PhaseKind::Lobby {
-        return;
+        return None;
     }
-    println!("Lobby readiness:");
-    if game.players.is_empty() {
-        println!("  (no connected players)");
-        return;
-    }
-    for player in game.players.values() {
-        println!(
-            "  {} {}: {}",
-            player.id,
-            player.name,
-            if player.ready { "READY" } else { "not ready" }
-        );
-    }
+    let player = game.player(player).ok()?;
+    let ready_count = game.players.values().filter(|player| player.ready).count();
+    Some(format!(
+        "Ready update: {} {} is {} ({ready_count}/{} connected ready).",
+        player.id,
+        player.name,
+        if player.ready { "READY" } else { "not ready" },
+        game.players.len()
+    ))
 }
 
 fn log_chat_events(events: &[GameEvent]) {
@@ -467,6 +463,16 @@ mod tests {
         assert_eq!(
             success_reply_text(&game, player, "/ready"),
             "Ready status confirmed: ready."
+        );
+        assert_eq!(
+            readiness_log_line(&game, player).as_deref(),
+            Some("Ready update: #1 Alice is READY (1/1 connected ready).")
+        );
+
+        game.toggle_ready(player).unwrap();
+        assert_eq!(
+            readiness_log_line(&game, player).as_deref(),
+            Some("Ready update: #1 Alice is not ready (0/1 connected ready).")
         );
     }
 }
