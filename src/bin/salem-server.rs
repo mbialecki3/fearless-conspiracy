@@ -67,7 +67,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         game.config.expected_players()
     );
     println!("{}", options.announcement());
-    println!("Host console: help, status, advance (manual mode), abort, shutdown.");
 
     loop {
         clock.sync(game.phase, Instant::now());
@@ -180,6 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     peers.insert(peer, player);
                     player_peers.insert(player, peer);
                     sequences.insert(player, 0);
+                    println!("{player} {name} joined the lobby.");
                     let joined = vec![
                         GameEvent {
                             recipients: Recipients::only(player),

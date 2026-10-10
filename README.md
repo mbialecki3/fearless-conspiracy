@@ -58,19 +58,37 @@ private, group, and broadcast delivery with three distinct Linux users.
 
 ## Run the game
 
-The default is a timed, randomized Demo 5 match on the protected runtime
-socket:
+For a local five-player test, start the server:
 
 ```sh
-sudo -u salem_host salem-server /run/terminal-salem/game.sock --preset demo5
-sudo -u salem_p1 salem-client /run/terminal-salem/game.sock Alice
+./server
 ```
 
-Start one client per distinct player account, then enter `/ready` in each.
-Available presets are `demo5`, `standard7`, `standard8`, and `full9`. Add
-`--scenario` to assign roles in the public preset order for a visibly labeled
-test/screenshot run. `--fast --allow-same-uid` is only for automated local
-smoke tests; it shortens phase timers and disables the separate-UID check.
+Then start one client in each player terminal:
+
+```sh
+./client "Player 10"
+./client "Player 11"
+./client "Player 12"
+./client "Player 13"
+./client "Player 14"
+```
+
+The launchers share `/tmp/terminal-salem.sock`, build the needed executable,
+and allow same-account clients for local testing. `./client` with no name asks
+for one. Enter `/ready` in each client. Run `./server --help` or
+`./client --help` for launcher options.
+
+For a predictable host-paced demonstration, use:
+
+```sh
+./server --scenario --manual
+```
+
+Available presets are `demo5`, `standard7`, `standard8`, and `full9`. The local
+launcher accepts `--preset PRESET`, `--fast`, repeated `--duration
+PHASE=SECONDS`, and `--socket PATH`. Use `--strict-users` to make the launcher
+enforce separate Linux UIDs.
 
 For a host-paced demonstration, add `--manual`. In the **server terminal**,
 enter `advance` to finish the current phase, `status` to inspect progress,
@@ -80,7 +98,6 @@ running; it does not advance or abort the game. Players cannot use host controls
 
 Override individual timers before starting with repeated options such as
 `--duration night=45 --duration nominations=30 --duration defense=15`.
-Use seconds from 0.001 through 3600; `salem-server --help` lists all phase names.
 Overrides apply after `--fast` regardless of argument order. Every player sees
 the selected mode and durations on joining; timers are inactive in manual mode.
 Timed nominations pause for trials and resume their remaining budget after

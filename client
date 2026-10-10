@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$project_root"
+
+socket_path="${SALEM_SOCKET:-/tmp/terminal-salem.sock}"
+player_name=""
+client_args=()
+
+usage() {
+  cat <<'EOF'
+Usage: ./client [NAME] [options]
+
+If NAME is omitted, the launcher asks for it. The default socket is
+/tmp/terminal-salem.sock.
+
+Options:
+  --socket PATH       Use another socket path.
+  --plain             Disable interactive line editing.
+EOF
+}
+
+while (( $# )); do
+  case "$1" in
+    --socket)
+      [[ $# -ge 2 ]] || { printf '%s\n' '--socket requires a path' >&2; exit 2; }
+      socket_path="$2"
+      shift 2
+      ;;
+    --socket=*)
+      socket_path="${1#*=}"
+      shift
+      ;;
+    --plain)
+      client_args+=(--plain)
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      printf 'Unknown option: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      [[ -z "$player_name" ]] || {
+        printf 'Only one player name is allowed. Quote names containing spaces.\n' >&2
+        exit 2
+      }
+      player_name="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$player_name" ]]; then
+  [[ -t 0 ]] || { printf 'A player name is required for noninteractive input.\n' >&2; exit 2; }
+  read -r -p 'Player name: ' player_name
+fi
+
+[[ -n "${player_name// }" ]] || { printf 'Player name cannot be empty.\n' >&2; exit 2; }
+
+cargo build --quiet --bin salem-client
+exec target/debug/salem-client "$socket_path" "$player_name" "${client_args[@]}"
