@@ -180,6 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     player_peers.insert(player, peer);
                     sequences.insert(player, 0);
                     println!("{player} {name} joined the lobby.");
+                    print_lobby_readiness(&game);
                     let joined = vec![
                         GameEvent {
                             recipients: Recipients::only(player),
@@ -255,6 +256,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 match command::dispatch(&mut game, player, phase_id, &text) {
                     Ok(output) => {
+                        log_chat_events(&output.events);
                         deliver_events(
                             &transport,
                             &player_peers,
@@ -267,9 +269,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ServerMessage::Reply {
                                 request_id,
                                 accepted: true,
-                                text: "accepted".into(),
+                                text: success_reply_text(&game, player, &text),
                             },
                         );
+                        if text.trim() == "/ready" {
+                            print_lobby_readiness(&game);
+                        }
                         if output.quit {
                             transport.disconnect(peer, "requested by player");
                         } else if game.can_start() {
@@ -309,11 +314,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Ok(uid) = game.leave_lobby(player) {
                             transport.release_uid(uid);
                         }
+                        print_lobby_readiness(&game);
                     } else {
                         game.mark_disconnected(player)?;
                     }
                 }
             }
+        }
+    }
+}
+
+fn success_reply_text(game: &Game, player: PlayerId, command: &str) -> String {
+    if command.trim() == "/ready" {
+        let status = game
+            .player(player)
+            .map(|player| if player.ready { "ready" } else { "not ready" })
+            .unwrap_or("unknown");
+        format!("Ready status confirmed: {status}.")
+    } else if is_chat_command(command) {
+        "Message delivered.".into()
+    } else {
+        "accepted".into()
+    }
+}
+
+fn print_lobby_readiness(game: &Game) {
+    if game.phase.kind != PhaseKind::Lobby {
+        return;
+    }
+    println!("Lobby readiness:");
+    if game.players.is_empty() {
+        println!("  (no connected players)");
+        return;
+    }
+    for player in game.players.values() {
+        println!(
+            "  {} {}: {}",
+            player.id,
+            player.name,
+            if player.ready { "READY" } else { "not ready" }
+        );
+    }
+}
+
+fn log_chat_events(events: &[GameEvent]) {
+    for event in events {
+        if matches!(
+            event.channel,
+            "public" | "whisper" | "mafia" | "jail" | "dead" | "postgame"
+        ) {
+            let safe_text = event.text.replace('\r', "\\r").replace('\n', "\\n");
+            println!("[CHAT:{}] {safe_text}", event.channel.to_uppercase());
         }
     }
 }
@@ -389,5 +440,29 @@ fn deliver_events(
                 },
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use terminal_salem::roles::Preset;
+
+    #[test]
+    fn only_ready_and_chat_receive_visible_success_text() {
+        let mut game = Game::with_seed(GameConfig::ordinary(Preset::Demo5), 1).unwrap();
+        let player = game.join(1001, "Alice").unwrap();
+
+        assert_eq!(success_reply_text(&game, player, "/role"), "accepted");
+        assert_eq!(
+            success_reply_text(&game, player, "hello everyone"),
+            "Message delivered."
+        );
+
+        game.toggle_ready(player).unwrap();
+        assert_eq!(
+            success_reply_text(&game, player, "/ready"),
+            "Ready status confirmed: ready."
+        );
     }
 }

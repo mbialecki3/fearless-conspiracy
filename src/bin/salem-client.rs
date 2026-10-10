@@ -47,7 +47,9 @@ fn run_plain(client: ClientTransport) -> Result<(), Box<dyn std::error::Error>> 
                 if let Some(new_phase) = message_phase(&message) {
                     phase_id = new_phase;
                 }
-                println!("{}", render_message(message));
+                if let Some(rendered) = render_message(message) {
+                    println!("{rendered}");
+                }
             }
             Ok(None) => {}
             Err(error) => {
@@ -58,11 +60,14 @@ fn run_plain(client: ClientTransport) -> Result<(), Box<dyn std::error::Error>> 
         match line_rx.try_recv() {
             Ok(Ok(text)) => {
                 let quitting = text.trim() == "/quit";
-                client.send(ClientMessage::Command {
+                if let Err(error) = client.send(ClientMessage::Command {
                     request_id,
                     phase_id,
                     text,
-                })?;
+                }) {
+                    println!("[ERROR] command was not sent: {error}");
+                    return Ok(());
+                }
                 request_id += 1;
                 if quitting {
                     thread::sleep(Duration::from_millis(150));
@@ -95,14 +100,12 @@ fn run_prompt_safe(client: ClientTransport) -> Result<(), Box<dyn std::error::Er
         loop {
             match command_rx.try_recv() {
                 Ok(PromptCommand::Line(text)) => {
-                    if client
-                        .send(ClientMessage::Command {
-                            request_id,
-                            phase_id: network_phase.load(Ordering::Acquire),
-                            text,
-                        })
-                        .is_err()
-                    {
+                    if let Err(error) = client.send(ClientMessage::Command {
+                        request_id,
+                        phase_id: network_phase.load(Ordering::Acquire),
+                        text,
+                    }) {
+                        let _ = printer.print(format!("[ERROR] command was not sent: {error}"));
                         return;
                     }
                     request_id += 1;
@@ -119,7 +122,10 @@ fn run_prompt_safe(client: ClientTransport) -> Result<(), Box<dyn std::error::Er
                         network_phase.store(new_phase, Ordering::Release);
                     }
                     let closing = matches!(message, ServerMessage::Closing { .. });
-                    if printer.print(render_message(message)).is_err() || closing {
+                    if render_message(message)
+                        .is_some_and(|rendered| printer.print(rendered).is_err())
+                        || closing
+                    {
                         return;
                     }
                 }
@@ -163,15 +169,58 @@ fn message_phase(message: &ServerMessage) -> Option<u64> {
     }
 }
 
-fn render_message(message: ServerMessage) -> String {
+fn render_message(message: ServerMessage) -> Option<String> {
     match message {
         ServerMessage::Event { channel, text, .. } => {
-            format!("[{}] {text}", channel.to_uppercase())
+            Some(format!("[{}] {text}", channel.to_uppercase()))
         }
-        ServerMessage::Reply { accepted, text, .. } => {
-            format!("[{}] {text}", if accepted { "OK" } else { "REJECTED" })
-        }
-        ServerMessage::Closing { reason } => format!("[CLOSED] {reason}"),
-        other => format!("[SYSTEM] {other:?}"),
+        ServerMessage::Reply {
+            accepted: true,
+            text,
+            ..
+        } if text == "accepted" => None,
+        ServerMessage::Reply { accepted, text, .. } => Some(format!(
+            "[{}] {text}",
+            if accepted { "OK" } else { "ERROR" }
+        )),
+        ServerMessage::Closing { reason } => Some(format!("[CLOSED] {reason}")),
+        other => Some(format!("[SYSTEM] {other:?}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn routine_success_replies_are_silent() {
+        assert_eq!(
+            render_message(ServerMessage::Reply {
+                request_id: 1,
+                accepted: true,
+                text: "accepted".into(),
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn useful_confirmations_and_errors_are_visible() {
+        assert_eq!(
+            render_message(ServerMessage::Reply {
+                request_id: 1,
+                accepted: true,
+                text: "Ready status confirmed: ready.".into(),
+            }),
+            Some("[OK] Ready status confirmed: ready.".into())
+        );
+        assert_eq!(
+            render_message(ServerMessage::Reply {
+                request_id: 2,
+                accepted: false,
+                text: "wrong phase".into(),
+            }),
+            Some("[ERROR] wrong phase".into())
+        );
     }
 }
