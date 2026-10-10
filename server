@@ -17,6 +17,7 @@ Local defaults: /tmp/fearless-conspiracy.sock, Demo 5, same-UID clients allowed.
 Wrapper options:
   --socket PATH       Use another socket path.
   --strict-users      Require a different Linux UID for every player.
+  --shared-local      Let any local Linux user connect to the game socket.
 
 Game options:
   --scenario          Assign roles in predictable preset order.

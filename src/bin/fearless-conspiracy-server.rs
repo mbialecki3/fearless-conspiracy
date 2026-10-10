@@ -26,6 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = &options.path;
     let preset = options.preset;
     let allow_same_uid = options.allow_same_uid;
+    let socket_mode = if options.shared_local { 0o666 } else { 0o660 };
     let config = if options.scenario {
         GameConfig::scenario(preset.roles().to_vec())
     } else {
@@ -35,6 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let limits = TransportLimits {
         require_unique_uid: !allow_same_uid,
         reject_server_uid: !allow_same_uid,
+        socket_mode,
         ..TransportLimits::default()
     };
     let mut transport = ServerTransport::bind(path, limits)?;

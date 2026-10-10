@@ -48,6 +48,8 @@ pub struct TransportLimits {
     pub require_unique_uid: bool,
     pub reject_root: bool,
     pub reject_server_uid: bool,
+    /// Unix permission bits applied to the bound socket pathname.
+    pub socket_mode: u32,
 }
 
 impl Default for TransportLimits {
@@ -63,6 +65,7 @@ impl Default for TransportLimits {
             require_unique_uid: true,
             reject_root: true,
             reject_server_uid: true,
+            socket_mode: 0o660,
         }
     }
 }
@@ -421,7 +424,7 @@ impl ServerTransport {
             )));
         }
         let listener = UnixListener::bind(&path)?;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o660))?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(limits.socket_mode))?;
         let metadata = fs::symlink_metadata(&path)?;
         let socket_identity = SocketIdentity {
             device: metadata.dev(),
@@ -1073,6 +1076,16 @@ mod tests {
             }) => (peer, credentials),
             event => panic!("expected a connection event, got {event:?}"),
         }
+    }
+
+    #[test]
+    fn configured_socket_mode_is_applied() {
+        let path = socket_path("shared-local-mode");
+        let mut limits = local_test_limits();
+        limits.socket_mode = 0o666;
+        let _server = ServerTransport::bind(&path, limits).unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o666);
     }
 
     struct SmallChunks<R> {
