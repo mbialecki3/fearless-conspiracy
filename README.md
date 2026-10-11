@@ -30,36 +30,21 @@ Start the server in one terminal:
 ./server
 ```
 
-For the course's multi-user setup, log each player into a different Linux user
+For multi user setup, log each player into a different Linux user
 account and start the server with shared local socket access:
 
 ```bash
 ./server --shared-local
 ```
 
-This makes the Unix socket accessible to local users on the machine. Use it
-only on a trusted system. The normal `./server` command restricts access to the
-server owner and group.
-
-Start one client from each player's terminal:
+Start one client from each players terminal using
 
 ```bash
-./client "Player 10"
-./client "Player 11"
-./client "Player 12"
-./client "Player 13"
-./client "Player 14"
+./client "Name"
 ```
 
 Enter `/ready` in every client. A five-player game starts when all five players
 are connected and ready.
-
-Running `./client` without a name asks for one. The server and clients use
-`/tmp/fearless-conspiracy.sock` automatically.
-
-If a previous server crashed and left that socket behind, the next `./server`
-launch verifies that no server is listening and removes the stale socket
-automatically. A running server is never replaced.
 
 For predictable roles and manual phase control, use:
 
