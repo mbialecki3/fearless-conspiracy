@@ -255,8 +255,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
                 }
+                let previous_nomination = game.nominations.get(&player).copied();
                 match command::dispatch(&mut game, player, phase_id, &text) {
                     Ok(output) => {
+                        if let Some(line) =
+                            nomination_log_line(&game, player, &text, previous_nomination)
+                        {
+                            println!("{line}");
+                        }
                         log_chat_events(&output.events);
                         deliver_events(
                             &transport,
@@ -360,6 +366,45 @@ fn readiness_log_line(game: &Game, player: PlayerId) -> Option<String> {
         if player.ready { "READY" } else { "not ready" },
         game.players.len()
     ))
+}
+
+fn nomination_log_line(
+    game: &Game,
+    voter: PlayerId,
+    command: &str,
+    previous: Option<PlayerId>,
+) -> Option<String> {
+    let voter_name = &game.player(voter).ok()?.name;
+    let command = command.trim();
+    if command.starts_with("/vote ") {
+        let target = *game.nominations.get(&voter)?;
+        let target_name = &game.player(target).ok()?.name;
+        let total = game
+            .nominations
+            .values()
+            .filter(|vote| **vote == target)
+            .count();
+        let threshold = game.nomination_threshold();
+        return Some(match previous {
+            Some(old) if old != target => {
+                let old_name = &game.player(old).ok()?.name;
+                format!(
+                    "Nomination: {voter} {voter_name} changed vote from {old} {old_name} to {target} {target_name} ({total}/{threshold} needed for trial)."
+                )
+            }
+            _ => format!(
+                "Nomination: {voter} {voter_name} voted for {target} {target_name} ({total}/{threshold} needed for trial)."
+            ),
+        });
+    }
+    if command == "/unvote" {
+        let target = previous?;
+        let target_name = &game.player(target).ok()?.name;
+        return Some(format!(
+            "Nomination: {voter} {voter_name} withdrew vote for {target} {target_name}."
+        ));
+    }
+    None
 }
 
 fn log_chat_events(events: &[GameEvent]) {
@@ -485,6 +530,47 @@ mod tests {
         assert_eq!(
             readiness_log_line(&game, player).as_deref(),
             Some("Ready update: #1 Alice is not ready (0/1 connected ready).")
+        );
+    }
+
+    #[test]
+    fn nomination_logs_identify_voters_targets_changes_and_withdrawals() {
+        let mut game =
+            Game::with_seed(GameConfig::scenario(Preset::Demo5.roles().to_vec()), 1).unwrap();
+        for (index, name) in ["Alice", "Bob", "Cara", "Drew", "Emi"]
+            .into_iter()
+            .enumerate()
+        {
+            let player = game.join(1001 + index as u32, name).unwrap();
+            game.toggle_ready(player).unwrap();
+        }
+        game.start().unwrap();
+        while game.phase.kind != PhaseKind::Nominations {
+            advance_boundary(&mut game).unwrap();
+        }
+
+        let voter = PlayerId(1);
+        let phase = game.phase.id;
+        game.nominate(voter, PlayerId(3), phase).unwrap();
+        assert_eq!(
+            nomination_log_line(&game, voter, "/vote 3", None).as_deref(),
+            Some("Nomination: #1 Alice voted for #3 Cara (1/3 needed for trial).")
+        );
+
+        let previous = game.nominations.get(&voter).copied();
+        game.nominate(voter, PlayerId(4), phase).unwrap();
+        assert_eq!(
+            nomination_log_line(&game, voter, "/vote 4", previous).as_deref(),
+            Some(
+                "Nomination: #1 Alice changed vote from #3 Cara to #4 Drew (1/3 needed for trial)."
+            )
+        );
+
+        let previous = game.nominations.get(&voter).copied();
+        game.withdraw_nomination(voter, phase).unwrap();
+        assert_eq!(
+            nomination_log_line(&game, voter, "/unvote", previous).as_deref(),
+            Some("Nomination: #1 Alice withdrew vote for #4 Drew.")
         );
     }
 }
