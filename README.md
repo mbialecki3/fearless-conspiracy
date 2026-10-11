@@ -1,7 +1,8 @@
 # Fearless Conspiracy
 
-Fearless Conspiracy is a text-based social deduction game for five to nine players.
-One terminal runs the server and each player uses a separate client terminal.
+Fearless Conspiracy is a text-based social-deduction game for five to nine
+players. One terminal runs the moderator server, and every player runs a client
+process from a separate terminal.
 
 > **Disclaimer:** Fearless Conspiracy is an independent student project based on
 > and inspired by social-deduction games such as Mafia, Town of Salem, and
@@ -10,7 +11,7 @@ One terminal runs the server and each player uses a separate client terminal.
 
 ## Install
 
-On Ubuntu:
+On Ubuntu, install Rust and build the project:
 
 ```bash
 sudo apt update
@@ -21,7 +22,7 @@ cd Project1_CSE536
 cargo build
 ```
 
-## Run the game
+## Run
 
 Start the server in one terminal:
 
@@ -29,18 +30,18 @@ Start the server in one terminal:
 ./server
 ```
 
-If the server and clients run under different Linux accounts, start the server
-with shared-local socket access:
+For the course's multi-user setup, log each player into a different Linux user
+account and start the server with shared local socket access:
 
 ```bash
 ./server --shared-local
 ```
 
-This makes the local Unix socket accessible to every user on the machine. Use
-it only on a trusted system; the normal `./server` command restricts socket
-access to the server owner and group.
+This makes the Unix socket accessible to local users on the machine. Use it
+only on a trusted system. The normal `./server` command restricts access to the
+server owner and group.
 
-Start one client in each of five other terminals:
+Start one client from each player's terminal:
 
 ```bash
 ./client "Player 10"
@@ -50,7 +51,8 @@ Start one client in each of five other terminals:
 ./client "Player 14"
 ```
 
-Enter `/ready` in every client. The game starts when everyone is ready.
+Enter `/ready` in every client. A five-player game starts when all five players
+are connected and ready.
 
 Running `./client` without a name asks for one. The server and clients use
 `/tmp/fearless-conspiracy.sock` automatically.
@@ -65,8 +67,9 @@ For predictable roles and manual phase control, use:
 ./server --scenario --manual
 ```
 
-In the server terminal, use `status` to show the phase, `advance` to move to the
-next phase, and `shutdown` to stop the server.
+In the server terminal, use `status` to show the current game state, `advance`
+to move to the next phase, `abort` to cancel the current match, and `shutdown`
+to stop the server cleanly.
 
 ## How to play
 
@@ -74,10 +77,10 @@ next phase, and `shutdown` to stop the server.
 - **Mafia** wins by deceiving and eliminating the Town.
 - **Jester** wins by convincing the players to execute the Jester.
 
-Players receive secret roles. At night, players use their role abilities. At
-dawn, results and deaths are announced. During the day, players discuss their
-evidence and nominate someone for trial. The accused gives a defense, then the
-other living players vote guilty, innocent, or abstain.
+Players receive secret roles. At night, players privately choose role actions.
+At dawn, deaths and other public results are announced. During the day, players
+discuss their evidence and nominate someone for trial. The accused gives a
+defense, and the other living players vote guilty, innocent, or abstain.
 
 Players are targeted by their displayed game IDs, such as `#1` or `#4`, not by
 their client names.
@@ -86,6 +89,7 @@ their client names.
 
 ```text
 /help                    Show available commands.
+/help ROLE               Explain a role and its commands.
 /role                    Show your role.
 /players                 Show player IDs and status.
 /say MESSAGE             Send a public message.
