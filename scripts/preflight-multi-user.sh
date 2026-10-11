@@ -84,7 +84,7 @@ if [[ -n "$socket_path" ]]; then
 fi
 
 if (( failed )); then
-  printf 'Preflight failed. Apply docs/multi-user-demo.md, start a new login session, and retry.\n' >&2
+  printf 'Preflight failed. Correct the reported account or permission problems and retry.\n' >&2
   exit 1
 fi
 
