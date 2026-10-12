@@ -4,11 +4,6 @@ Fearless Conspiracy is a text-based social-deduction game for five to nine
 players. One terminal runs the moderator server, and every player runs a client
 process from a separate terminal.
 
-> **Disclaimer:** Fearless Conspiracy is an independent student project based on
-> and inspired by social-deduction games such as Mafia, Town of Salem, and
-> Werewolf. It is not affiliated with, endorsed by, or associated with the
-> creators, publishers, or rights holders of those games.
-
 ## Install
 
 On Ubuntu, install Rust and build the project:
