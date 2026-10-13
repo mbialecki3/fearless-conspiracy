@@ -6,16 +6,60 @@ process from a separate terminal.
 
 ## Install
 
-On Ubuntu, install Rust and build the project:
+### Ubuntu
+
+After downloading or cloning the project, enter its folder and run:
 
 ```bash
-sudo apt update
-sudo apt install --yes build-essential curl pkg-config
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-. "$HOME/.cargo/env"
 cd Project1_CSE536
-cargo build
+./install
+export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 ```
+
+Run `./install` as your normal user. It uses `sudo` to install Ubuntu packages
+(`build-essential`, `ca-certificates`, `curl`, and `pkg-config`), installs Rustup
+if needed, downloads the project's Rust toolchain, and builds the game. Internet
+access is required. Existing Rustup installations are reused.
+
+The `export` command makes Rust available in your current terminal. For a new
+installation, Rustup also configures future shells. You can rerun `./install`
+if installation is interrupted.
+
+### Manual installation on other Linux distributions
+
+1. Use your distribution's package manager to install a C compiler and linker
+   (GCC or Clang), Make, `curl`, `pkg-config`, and CA certificates. On Ubuntu,
+   you can install these manually with:
+
+   ```bash
+   sudo apt update
+   sudo apt install --yes build-essential ca-certificates curl pkg-config
+   ```
+
+2. Install Rust using the [official Rustup installer](https://rust-lang.org/tools/install/)
+   if you do not already have Rustup:
+
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+   export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+   ```
+
+3. Enter the project folder, select the toolchain, and build:
+
+   ```bash
+   cd Project1_CSE536
+   rustup show
+   cargo build --locked --bins
+   ```
+
+The checked-in `rust-toolchain.toml` selects Rust 1.95.0, Rustfmt, and Clippy;
+Rustup installs missing components for the project. See the
+[Rustup toolchain documentation](https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file)
+for how this works.
+
+The game requires Linux because it uses Linux Unix-socket peer credentials.
+On Windows, use Ubuntu under WSL; on macOS, use a Linux VM. Then follow the
+instructions above inside that Linux environment.
 
 ## Run
 
