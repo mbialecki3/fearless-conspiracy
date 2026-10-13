@@ -69,15 +69,18 @@ Start the server in one terminal:
 ./server
 ```
 
-The launcher asks how many players you want (3–9), whether the host should
-advance phases manually, whether roles should be predictable, which automatic
-timer speed to use, and whether other local Linux accounts can connect. Press
-Enter to accept each default. It shows the role lineup before opening the lobby.
+Every launch of `./server` asks how many players you want (3–9), whether the host
+should advance phases manually, whether roles should be predictable, which
+automatic timer speed to use, and whether other local Linux accounts can
+connect. Press Enter to explicitly accept a displayed default, or type your
+choice. It shows the role lineup before opening the lobby.
 Predictable roles follow player ID order; otherwise the lineup is shuffled.
 
-To use the questions with command-line defaults, run `./server --setup` with
-any additional options. For example, `./server --setup --shared-local` defaults
-to allowing connections from other local accounts.
+Setup always runs, even when you supply options or redirect input. The server
+waits for answers before opening the lobby; if input closes before setup is
+complete, it exits without starting a game. Command-line options only supply
+the displayed defaults for the questions; they do not skip setup. `--setup`
+is still accepted for compatibility but is no longer needed.
 
 For multi user setup, log each player into a different Linux user
 account and start the server with shared local socket access:
@@ -95,16 +98,14 @@ Start one client from each players terminal using
 Enter `/ready` in every client. The game starts when the selected number of
 players are connected and everyone is ready.
 
-To skip the questions, supply game options. For example, for six players with
-predictable roles and manual phase control, use:
+You can optionally suggest answers with game options. For example, this shows
+six players, predictable roles, and manual phase control as the setup defaults:
 
 ```bash
 ./server --players 6 --scenario --manual
 ```
 
-Existing scenario and preset commands still work. `./server --players 5` starts
-with the previous defaults. With redirected input, bare `./server` also keeps
-the previous defaults and skips setup; use `--setup` to explicitly read answers.
+The questions still appear, and you must answer or press Enter for each one.
 
 In the server terminal, use `status` to show the current game state, `advance`
 to move to the next phase, `abort` to cancel the current match, and `shutdown`
@@ -174,5 +175,5 @@ and `full9`. The default remains five players.
 | 6 | `standard6` | Sheriff, Doctor, Lookout, Escort, Mafioso, Jester |
 
 Three-player games are quick demos where one death can decide the match;
-four players give more room for discussion. For example, run `./server --players 3`
-or `./server --players 4`, or select either count in the interactive setup.
+four players give more room for discussion. Run `./server` and select either
+count in the setup questions.
