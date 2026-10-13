@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: ./install
+
+Install Ubuntu build dependencies, install Rustup if needed, and build the game.
+Run as your normal user; sudo is used only for Ubuntu packages.
+Internet access is required. Other Linux distributions: see README.md.
+EOF
+}
+
+if (( $# )); then
+  if (( $# == 1 )) && [[ "$1" == --help || "$1" == -h ]]; then
+    usage
+    exit 0
+  fi
+  usage >&2
+  exit 2
+fi
+
+if [[ ! -r /etc/os-release ]] || [[ "$(. /etc/os-release; printf '%s' "${ID:-}")" != ubuntu ]]; then
+  printf 'This installer supports Ubuntu. See README.md for manual Linux installation.\n' >&2
+  exit 1
+fi
+
+project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$project_root"
+
+package_command=(apt-get)
+if (( EUID != 0 )); then
+  command -v sudo >/dev/null || {
+    printf 'sudo is required to install Ubuntu packages.\n' >&2
+    exit 1
+  }
+  package_command=(sudo apt-get)
+fi
+
+printf 'Installing Ubuntu build dependencies...\n'
+"${package_command[@]}" update
+"${package_command[@]}" install --yes build-essential ca-certificates curl pkg-config
+
+cargo_home_path="${CARGO_HOME:-$HOME/.cargo}"
+export PATH="$cargo_home_path/bin:$PATH"
+if ! command -v rustup >/dev/null; then
+  printf 'Installing Rustup for the current user...\n'
+  rustup_installer="$(mktemp)"
+  trap 'rm -f -- "$rustup_installer"' EXIT
+  curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs -o "$rustup_installer"
+  sh "$rustup_installer" -y --profile minimal --default-toolchain none
+else
+  printf 'Using the existing Rustup installation.\n'
+fi
+
+printf 'Preparing the Rust toolchain from rust-toolchain.toml...\n'
+rustup show
+printf 'Building the game...\n'
+cargo build --locked --bins
+
+printf '\nInstallation complete. In your current terminal, run:\n'
+printf '  export PATH=%q:"$PATH"\n' "$cargo_home_path/bin"
+printf '  ./server\n'
+printf 'Players can then run ./client in separate terminals.\n'
