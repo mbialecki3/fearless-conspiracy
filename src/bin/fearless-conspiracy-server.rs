@@ -22,7 +22,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{SERVER_USAGE}");
         return Ok(());
     }
-    let options = ServerOptions::parse(&arguments)?;
+    let mut options = ServerOptions::parse(&arguments)?;
+    if options.setup {
+        options.configure_lobby(&mut io::stdin().lock(), &mut io::stdout().lock())?;
+    }
     let path = &options.path;
     let preset = options.preset;
     let allow_same_uid = options.allow_same_uid;
@@ -69,6 +72,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         game.config.expected_players()
     );
     println!("{}", options.announcement());
+    println!(
+        "Players: run ./client NAME in separate terminals and enter /ready. All {} players must be connected and ready to start.",
+        game.config.expected_players()
+    );
+    println!("Host commands: help, status, advance (manual mode), abort, shutdown.");
 
     loop {
         clock.sync(game.phase, Instant::now());

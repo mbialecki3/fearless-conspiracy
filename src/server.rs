@@ -2,6 +2,7 @@
 
 use crate::game::{Game, GameError, GameEvent, MatchOutcome, Phase, PhaseKind};
 use crate::roles::Preset;
+use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug)]
@@ -130,13 +131,15 @@ impl PhaseClock {
 }
 
 pub const SERVER_USAGE: &str =
-    "Usage: fearless-conspiracy-server [SOCKET] [--preset demo5|standard7|standard8|full9]
+    "Usage: fearless-conspiracy-server [SOCKET] [--players 3|4|5|6|7|8|9]
+  [--preset demo3|standard4|demo5|standard6|standard7|standard8|full9] [--setup]
   [--scenario] [--manual] [--fast] [--allow-same-uid] [--shared-local]
   [--duration PHASE=SECONDS]...
 Host commands: help, status, advance, abort, shutdown.";
 
 #[derive(Debug)]
 pub struct ServerOptions {
+    pub setup: bool,
     pub path: String,
     pub preset: Preset,
     pub scenario: bool,
@@ -149,6 +152,7 @@ pub struct ServerOptions {
 impl ServerOptions {
     pub fn parse(arguments: &[String]) -> Result<Self, String> {
         let mut options = Self {
+            setup: false,
             path: "/run/fearless-conspiracy/game.sock".into(),
             preset: Preset::Demo5,
             scenario: false,
@@ -162,20 +166,36 @@ impl ServerOptions {
         let mut arguments = arguments.iter();
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
+                "--setup" => options.setup = true,
                 "--scenario" => options.scenario = true,
                 "--manual" => options.manual = true,
                 "--allow-same-uid" => options.allow_same_uid = true,
                 "--shared-local" => options.shared_local = true,
                 "--fast" => options.durations = Durations::fast(),
+                "--players" => {
+                    options.preset = match arguments.next().map(String::as_str) {
+                        Some("3") => Preset::Demo3,
+                        Some("4") => Preset::Standard4,
+                        Some("5") => Preset::Demo5,
+                        Some("6") => Preset::Standard6,
+                        Some("7") => Preset::Standard7,
+                        Some("8") => Preset::Standard8,
+                        Some("9") => Preset::Full9,
+                        _ => return Err("--players requires a number from 3 through 9".into()),
+                    };
+                }
                 "--preset" => {
                     options.preset = match arguments.next().map(String::as_str) {
+                        Some("demo3" | "3") => Preset::Demo3,
+                        Some("standard4" | "4") => Preset::Standard4,
                         Some("demo5" | "5") => Preset::Demo5,
+                        Some("standard6" | "6") => Preset::Standard6,
                         Some("standard7" | "7") => Preset::Standard7,
                         Some("standard8" | "8") => Preset::Standard8,
                         Some("full9" | "9") => Preset::Full9,
                         _ => {
                             return Err(
-                                "--preset requires demo5, standard7, standard8, or full9".into()
+                                "--preset requires demo3, standard4, demo5, standard6, standard7, standard8, or full9".into()
                             );
                         }
                     };
@@ -217,6 +237,95 @@ impl ServerOptions {
             *slot = duration;
         }
         Ok(options)
+    }
+
+    /// Read setup before starting the host console or binding the game socket.
+    /// Explicit command-line settings supply defaults for the questions.
+    pub fn configure_lobby(
+        &mut self,
+        input: &mut impl BufRead,
+        output: &mut impl Write,
+    ) -> io::Result<()> {
+        writeln!(output, "Fearless Conspiracy lobby setup")?;
+        writeln!(
+            output,
+            "Press Enter to accept a default; Ctrl+C to cancel.\n"
+        )?;
+        let players = prompt_choice(
+            input,
+            output,
+            "How many players do you want? (3-9)",
+            &self.preset.roles().len().to_string(),
+            &["3", "4", "5", "6", "7", "8", "9"],
+        )?;
+        self.preset = match players.as_str() {
+            "3" => Preset::Demo3,
+            "4" => Preset::Standard4,
+            "5" => Preset::Demo5,
+            "6" => Preset::Standard6,
+            "7" => Preset::Standard7,
+            "8" => Preset::Standard8,
+            "9" => Preset::Full9,
+            _ => unreachable!("prompt validates player count"),
+        };
+        self.manual = prompt_yes_no(
+            input,
+            output,
+            "Do you want manual phase control? (use advance; disables timers)",
+            self.manual,
+        )?;
+        self.scenario = prompt_yes_no(
+            input,
+            output,
+            "Do you want predictable roles? (assigned in player ID order)",
+            self.scenario,
+        )?;
+        if !self.manual {
+            writeln!(
+                output,
+                "Normal timers give players time to act; fast timers use fractions of a second for testing."
+            )?;
+            match prompt_choice(
+                input,
+                output,
+                "Timer speed (current keeps existing settings; normal/fast)",
+                "current",
+                &["current", "normal", "fast"],
+            )?
+            .as_str()
+            {
+                "normal" => self.durations = Durations::default(),
+                "fast" => self.durations = Durations::fast(),
+                _ => {}
+            }
+        }
+        self.shared_local = prompt_yes_no(
+            input,
+            output,
+            "Allow players from other local Linux accounts to connect?",
+            self.shared_local,
+        )?;
+        let roles = self
+            .preset
+            .roles()
+            .iter()
+            .enumerate()
+            .map(|(index, role)| {
+                if self.scenario {
+                    format!("#{} {}", index + 1, role.display_name())
+                } else {
+                    role.display_name().to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        writeln!(output, "\nRoles: {roles}")?;
+        writeln!(
+            output,
+            "Starting a {}-player lobby.\n",
+            self.preset.roles().len()
+        )?;
+        Ok(())
     }
 
     pub fn announcement(&self) -> String {
@@ -268,6 +377,50 @@ impl ServerOptions {
     }
 }
 
+fn prompt_choice(
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+    question: &str,
+    default: &str,
+    choices: &[&str],
+) -> io::Result<String> {
+    loop {
+        write!(output, "{question} [{default}]: ")?;
+        output.flush()?;
+        let mut line = String::new();
+        if input.read_line(&mut line)? == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "lobby setup cancelled: input closed before setup finished",
+            ));
+        }
+        let answer = line.trim().to_ascii_lowercase();
+        if answer.is_empty() {
+            return Ok(default.to_string());
+        }
+        if choices.contains(&answer.as_str()) {
+            return Ok(answer);
+        }
+        writeln!(output, "Please enter {}.", choices.join(" / "))?;
+    }
+}
+
+fn prompt_yes_no(
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+    question: &str,
+    default: bool,
+) -> io::Result<bool> {
+    let answer = prompt_choice(
+        input,
+        output,
+        question,
+        if default { "yes" } else { "no" },
+        &["y", "yes", "n", "no"],
+    )?;
+    Ok(matches!(answer.as_str(), "y" | "yes"))
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum HostCommand {
     Help,
@@ -316,6 +469,207 @@ mod tests {
     use super::*;
     use crate::game::{GameConfig, PlayerId};
     use crate::roles::Preset;
+
+    #[test]
+    fn player_counts_select_presets_and_reject_unsupported_sizes() {
+        for players in 3..=9 {
+            let options = ServerOptions::parse(&["--players".into(), players.to_string()]).unwrap();
+            assert_eq!(options.preset.roles().len(), players);
+            let scenario = GameConfig::scenario(options.preset.roles().to_vec());
+            assert_eq!(scenario.preset, options.preset);
+            assert_eq!(scenario.expected_players(), players);
+        }
+        for args in [
+            vec!["--players"],
+            vec!["--players", "2"],
+            vec!["--players", "10"],
+            vec!["--players", "six"],
+        ] {
+            assert!(
+                ServerOptions::parse(&args.into_iter().map(String::from).collect::<Vec<_>>())
+                    .is_err()
+            );
+        }
+        assert_eq!(
+            ServerOptions::parse(&["--preset".into(), "standard6".into()])
+                .unwrap()
+                .preset,
+            Preset::Standard6
+        );
+    }
+
+    #[test]
+    fn setup_retries_invalid_answers_and_leaves_host_commands_unread() {
+        let mut options = ServerOptions::parse(&["--setup".into()]).unwrap();
+        let mut input = &b"2\nsix\n 6 \nmaybe\n YES \ny\nn\nstatus\n"[..];
+        let mut output = Vec::new();
+        options.configure_lobby(&mut input, &mut output).unwrap();
+        assert_eq!(options.preset, Preset::Standard6);
+        assert!(options.manual);
+        assert!(options.scenario);
+        assert!(!options.shared_local);
+        assert_eq!(input, b"status\n");
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("Please enter 3 / 4 / 5 / 6 / 7 / 8 / 9"));
+        assert!(output.contains("Please enter y / yes / n / no"));
+        assert!(output.contains("#4 Escort"));
+        assert!(!output.contains("Timer speed"));
+    }
+
+    #[test]
+    fn setup_accepts_small_counts_and_named_presets_as_defaults() {
+        for (players, name, preset) in [
+            (3, "demo3", Preset::Demo3),
+            (4, "standard4", Preset::Standard4),
+        ] {
+            for alias in [name.to_string(), players.to_string()] {
+                let options = ServerOptions::parse(&["--preset".into(), alias]).unwrap();
+                assert_eq!(options.preset, preset);
+            }
+            let mut options = ServerOptions::parse(&["--preset".into(), name.into()]).unwrap();
+            options
+                .configure_lobby(&mut &b"\n\n\n\n\n"[..], &mut Vec::new())
+                .unwrap();
+            assert_eq!(options.preset, preset);
+            let mut options = ServerOptions::parse(&[]).unwrap();
+            let answers = format!("{players}\ny\ny\nn\n");
+            let mut output = Vec::new();
+            options
+                .configure_lobby(&mut answers.as_bytes(), &mut output)
+                .unwrap();
+            assert_eq!(options.preset, preset);
+            assert!(
+                String::from_utf8(output)
+                    .unwrap()
+                    .contains(&format!("#{players} Mafioso"))
+            );
+        }
+    }
+
+    #[test]
+    fn small_matches_can_resolve_night_actions_and_execute_mafia() {
+        use crate::game::{JudgmentChoice, Recipients};
+        use crate::roles::NightIntent;
+
+        for preset in [Preset::Demo3, Preset::Standard4] {
+            let mut game =
+                Game::with_seed(GameConfig::scenario(preset.roles().to_vec()), 7).unwrap();
+            let mafia = PlayerId(preset.roles().len() as u8);
+            for number in 1..=mafia.0 {
+                let player = game.join(number.into(), &format!("P{number}")).unwrap();
+                game.toggle_ready(player).unwrap();
+            }
+            game.start().unwrap();
+            advance_boundary(&mut game).unwrap();
+            advance_boundary(&mut game).unwrap();
+            assert_eq!(game.phase.kind, PhaseKind::Night);
+            let phase = game.phase.id;
+            game.select_night_intent(PlayerId(1), NightIntent::Investigate(mafia), phase)
+                .unwrap();
+            game.select_night_intent(PlayerId(2), NightIntent::Heal(PlayerId(1)), phase)
+                .unwrap();
+            game.select_night_intent(mafia, NightIntent::Kill(PlayerId(1)), phase)
+                .unwrap();
+            if preset == Preset::Standard4 {
+                game.select_night_intent(PlayerId(3), NightIntent::Watch(PlayerId(1)), phase)
+                    .unwrap();
+            }
+            let events = advance_boundary(&mut game).unwrap();
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event.recipients == Recipients::only(PlayerId(1))
+                        && event.text.contains("suspicious"))
+            );
+            assert!(game.players.values().all(|player| player.alive));
+            advance_boundary(&mut game).unwrap();
+            advance_boundary(&mut game).unwrap();
+            assert_eq!(game.phase.kind, PhaseKind::Nominations);
+            let phase = game.phase.id;
+            for number in 1..mafia.0 {
+                game.nominate(PlayerId(number), mafia, phase).unwrap();
+            }
+            assert_eq!(game.phase.kind, PhaseKind::Defense);
+            advance_boundary(&mut game).unwrap();
+            let phase = game.phase.id;
+            for number in 1..mafia.0 {
+                game.judge(PlayerId(number), JudgmentChoice::Guilty, phase)
+                    .unwrap();
+            }
+            advance_boundary(&mut game).unwrap();
+            assert_eq!(game.phase.kind, PhaseKind::LastWords);
+            advance_boundary(&mut game).unwrap();
+            assert_eq!(game.outcome, MatchOutcome::TownWin);
+            assert_eq!(game.phase.kind, PhaseKind::Ended);
+        }
+    }
+
+    #[test]
+    fn setup_defaults_preserve_flags_and_duration_overrides() {
+        let mut options = ServerOptions::parse(
+            &[
+                "--setup",
+                "--players",
+                "8",
+                "--scenario",
+                "--shared-local",
+                "--duration",
+                "night=42",
+            ]
+            .map(String::from),
+        )
+        .unwrap();
+        options
+            .configure_lobby(&mut &b"\n\n\n\n\n"[..], &mut Vec::new())
+            .unwrap();
+        assert_eq!(options.preset, Preset::Standard8);
+        assert!(options.scenario);
+        assert!(!options.manual);
+        assert!(options.shared_local);
+        assert_eq!(options.durations.night, Duration::from_secs(42));
+        assert!(!options.allow_same_uid);
+    }
+
+    #[test]
+    fn setup_can_change_flags_and_select_automatic_timer_speed() {
+        for (speed, night) in [
+            ("normal", Duration::from_secs(60)),
+            ("fast", Duration::from_millis(500)),
+        ] {
+            let mut options = ServerOptions::parse(
+                &[
+                    "--manual",
+                    "--scenario",
+                    "--shared-local",
+                    "--fast",
+                    "--allow-same-uid",
+                ]
+                .map(String::from),
+            )
+            .unwrap();
+            let answers = format!("9\nno\nno\n{speed}\nno\n");
+            options
+                .configure_lobby(&mut answers.as_bytes(), &mut Vec::new())
+                .unwrap();
+            assert_eq!(options.preset, Preset::Full9);
+            assert!(!options.manual);
+            assert!(!options.scenario);
+            assert!(!options.shared_local);
+            assert!(options.allow_same_uid);
+            assert_eq!(options.durations.night, night);
+        }
+    }
+
+    #[test]
+    fn setup_aborts_on_eof_instead_of_starting_with_partial_answers() {
+        for answers in ["", "6\n", "6\ny\ny\n", "6\nn\nn\nnormal\n"] {
+            let mut options = ServerOptions::parse(&[]).unwrap();
+            let error = options
+                .configure_lobby(&mut answers.as_bytes(), &mut Vec::new())
+                .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+        }
+    }
 
     #[test]
     fn duration_options_validate_and_override_fast_independent_of_order() {

@@ -70,7 +70,10 @@ impl GameConfig {
     pub fn scenario(roles: Vec<Role>) -> Self {
         Self {
             preset: match roles.len() {
+                3 => Preset::Demo3,
+                4 => Preset::Standard4,
                 5 => Preset::Demo5,
+                6 => Preset::Standard6,
                 7 => Preset::Standard7,
                 8 => Preset::Standard8,
                 _ => Preset::Full9,
@@ -1508,9 +1511,9 @@ fn validate_config(config: &GameConfig) -> Result<(), GameError> {
         .scenario_roles
         .as_deref()
         .unwrap_or_else(|| config.preset.roles());
-    if !(5..=9).contains(&roles.len()) {
+    if !(3..=9).contains(&roles.len()) {
         return Err(GameError::InvalidScenario(
-            "a match requires five through nine players".into(),
+            "a match requires three through nine players".into(),
         ));
     }
     let unique: HashSet<_> = roles.iter().copied().collect();
@@ -1632,7 +1635,10 @@ mod tests {
     #[test]
     fn all_presets_have_unique_roles_and_expected_sizes() {
         for (preset, size) in [
+            (Preset::Demo3, 3),
+            (Preset::Standard4, 4),
             (Preset::Demo5, 5),
+            (Preset::Standard6, 6),
             (Preset::Standard7, 7),
             (Preset::Standard8, 8),
             (Preset::Full9, 9),
@@ -1643,6 +1649,55 @@ mod tests {
                 size
             );
             Game::with_seed(GameConfig::ordinary(preset), 1).unwrap();
+        }
+    }
+
+    #[test]
+    fn small_lobbies_require_every_player_and_assign_the_complete_lineup() {
+        for preset in [Preset::Demo3, Preset::Standard4] {
+            for config in [
+                GameConfig::ordinary(preset),
+                GameConfig::scenario(preset.roles().to_vec()),
+            ] {
+                let predictable = config.scenario_roles.is_some();
+                let mut game = Game::with_seed(config, 7).unwrap();
+                let size = preset.roles().len();
+                for number in 1..=size {
+                    assert!(!game.can_start());
+                    assert_eq!(game.start(), Err(GameError::NotReady));
+                    let player = game.join(number as u32, &format!("P{number}")).unwrap();
+                    assert!(!game.can_start());
+                    game.toggle_ready(player).unwrap();
+                }
+                assert!(game.can_start());
+                assert_eq!(game.join(99, "Extra"), Err(GameError::LobbyFull));
+                let events = game.start().unwrap();
+                assert_eq!(events.len(), size);
+                assert_eq!(game.phase.kind, PhaseKind::RoleReveal);
+                let assigned: Vec<_> = game.players.values().map(|p| p.role().unwrap()).collect();
+                assert_eq!(
+                    assigned.iter().copied().collect::<HashSet<_>>(),
+                    preset.roles().iter().copied().collect::<HashSet<_>>()
+                );
+                if predictable {
+                    assert_eq!(assigned, preset.roles());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scenarios_still_reject_too_few_players_and_invalid_role_sets() {
+        for roles in [
+            vec![Role::Sheriff, Role::Mafioso],
+            vec![Role::Sheriff, Role::Sheriff, Role::Mafioso],
+            vec![Role::Sheriff, Role::Doctor, Role::Lookout],
+            vec![Role::Godfather, Role::Mafioso, Role::Framer],
+        ] {
+            assert!(matches!(
+                Game::with_seed(GameConfig::scenario(roles), 7),
+                Err(GameError::InvalidScenario(_))
+            ));
         }
     }
 
