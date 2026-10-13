@@ -7,12 +7,18 @@ cd "$project_root"
 socket_path="${FEARLESS_CONSPIRACY_SOCKET:-/tmp/fearless-conspiracy.sock}"
 strict_users=0
 server_args=()
+interactive_default=0
+if (( $# == 0 )) && [[ -t 0 ]]; then
+  interactive_default=1
+fi
 
 usage() {
   cat <<'EOF'
 Usage: ./server [options]
 
-Local defaults: /tmp/fearless-conspiracy.sock, Demo 5, same-UID clients allowed.
+With no options in a terminal, asks questions to set up the lobby.
+Noninteractive defaults: /tmp/fearless-conspiracy.sock, 5 players,
+randomized roles, normal timers, same-UID clients allowed.
 
 Wrapper options:
   --socket PATH       Use another socket path.
@@ -20,10 +26,13 @@ Wrapper options:
   --shared-local      Let any local Linux user connect to the game socket.
 
 Game options:
+  --setup             Ask setup questions; other flags supply defaults.
+  --players NUMBER    Choose 3 through 9 players without setup questions.
   --scenario          Assign roles in predictable preset order.
   --manual            Advance phases with the server command "advance".
   --fast              Use short automatic timers.
-  --preset PRESET     demo5, standard7, standard8, or full9.
+  --preset PRESET     demo3, standard4, demo5, standard6, standard7,
+                      standard8, or full9.
   --duration P=S      Override a phase duration.
 EOF
 }
@@ -56,6 +65,10 @@ done
 
 if (( ! strict_users )); then
   server_args+=(--allow-same-uid)
+fi
+
+if (( interactive_default )); then
+  server_args+=(--setup)
 fi
 
 cargo build --quiet --bin fearless-conspiracy-server

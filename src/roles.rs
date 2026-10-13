@@ -90,7 +90,10 @@ impl Role {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Preset {
+    Demo3,
+    Standard4,
     Demo5,
+    Standard6,
     Standard7,
     Standard8,
     Full9,
@@ -100,7 +103,10 @@ impl Preset {
     pub fn roles(self) -> &'static [Role] {
         use Role::*;
         match self {
+            Self::Demo3 => &[Sheriff, Doctor, Mafioso],
+            Self::Standard4 => &[Sheriff, Doctor, Lookout, Mafioso],
             Self::Demo5 => &[Sheriff, Doctor, Lookout, Mafioso, Jester],
+            Self::Standard6 => &[Sheriff, Doctor, Lookout, TavernKeeper, Mafioso, Jester],
             Self::Standard7 => &[Sheriff, Doctor, Lookout, Jailor, Godfather, Mafioso, Jester],
             Self::Standard8 => &[
                 Sheriff,
@@ -118,7 +124,10 @@ impl Preset {
 
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Demo3 => "Demo 3",
+            Self::Standard4 => "Standard 4",
             Self::Demo5 => "Demo 5",
+            Self::Standard6 => "Standard 6",
             Self::Standard7 => "Standard 7",
             Self::Standard8 => "Standard 8",
             Self::Full9 => "Full 9",
