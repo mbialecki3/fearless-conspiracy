@@ -63,5 +63,9 @@ if (( ! strict_users )); then
   server_args+=(--allow-same-uid)
 fi
 
-cargo build --quiet --bin fearless-conspiracy-server
+if [[ -x "$project_root/bin/fearless-conspiracy-server" ]]; then
+  exec "$project_root/bin/fearless-conspiracy-server" "$socket_path" "${server_args[@]}"
+fi
+
+cargo build --locked --quiet --bin fearless-conspiracy-server
 exec target/debug/fearless-conspiracy-server "$socket_path" "${server_args[@]}"
