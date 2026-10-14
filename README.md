@@ -6,12 +6,12 @@ process from a separate terminal.
 
 ## Install
 
-### Download ready-to-run binaries (recommended for class testing)
+### Download binaries
 
 Download **fearless-conspiracy-0.1.0-linux-x86_64.tar.gz** from the
 [GitHub release](https://github.com/mbialecki3/fearless-conspiracy/releases/latest).
 This package runs on 64-bit x86 Linux, including Ubuntu under WSL, without
-installing Rust or compiling anything. The binaries are statically linked.
+installing Rust or compiling anything.
 
 Extract the download and start the moderator in a terminal:
 
@@ -31,19 +31,6 @@ Use a different name for each player, then enter `/ready` in every client.
 All players must run on the same Linux system (or the same WSL distribution/VM),
 because the game uses local Unix-domain sockets. It does not connect different
 computers over the network. For multiple Linux accounts, use `./server --shared-local`.
-
-The archive includes the `server` and `client` launchers, all four Rust binaries
-in `bin/` (including the IPC demos), and this README. Keep the launchers beside
-the `bin/` directory. Windows users should extract and run it inside WSL;
-macOS users need an x86_64 Linux VM. Native Windows, macOS, and ARM binaries
-are not included.
-
-The release also includes a `.sha256` file. If you download both files into
-the same folder, you can verify the archive with:
-
-```bash
-sha256sum -c fearless-conspiracy-0.1.0-linux-x86_64.tar.gz.sha256
-```
 
 ### Build from source on Ubuntu
 
