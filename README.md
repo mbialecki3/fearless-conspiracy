@@ -1,205 +1,204 @@
 # Fearless Conspiracy
 
-Fearless Conspiracy is a text-based social-deduction game for three to nine
-players. One terminal runs the moderator server, and every player runs a client
-process from a separate terminal.
+Mitchell Bialecki - CSE 536, Project 1
 
-## Install
+A text-based game written in Rust for 3-9 players, inspired by Town of Salem.
+Town tries to eliminate the Mafia, Mafia tries to eliminate the Town, and
+the Jester tries to get voted out.
 
-### Download binaries
+**The communications library is contained in one file: [`src/comm.rs`](src/comm.rs).**
 
-Download **fearless-conspiracy-0.1.0-linux-x86_64.tar.gz** from the
-[GitHub release](https://github.com/mbialecki3/fearless-conspiracy/releases/latest).
-This package runs on 64-bit x86 Linux, including Ubuntu under WSL, without
-installing Rust or compiling anything.
+## Setup and build
 
-Extract the download and start the moderator in a terminal:
+Use Linux (or Ubuntu under WSL), with everyone on the same machine.
+From the project folder on Ubuntu, run:
 
 ```bash
-tar -xzf fearless-conspiracy-0.1.0-linux-x86_64.tar.gz
-cd fearless-conspiracy-0.1.0-linux-x86_64
-./server
+./install
+export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 ```
 
-In a separate terminal for each player, enter the same extracted folder and run:
+Run as your normal user. The installer uses `sudo` for system packages,
+installs Rust, and builds the game. It needs internet access. If Rustup and
+a C compiler/linker are already installed, use `cargo build --locked --bins`.
+`rust-toolchain.toml` selects Rust 1.95.0.
+
+## Run
+
+Each player needs a separate non-root Linux account, different from the host.
+Start the server as your normal user:
+
+```bash
+./server --strict-users --shared-local
+```
+
+Answer the setup questions; press Enter to accept a default. Choose manual
+phases if you want the host to advance the game. In a separate terminal under
+each player's account, run:
 
 ```bash
 ./client "Alice"
 ```
 
-Use a different name for each player, then enter `/ready` in every client.
-All players must run on the same Linux system (or the same WSL distribution/VM),
-because the game uses local Unix-domain sockets. It does not connect different
-computers over the network. For multiple Linux accounts, use `./server --shared-local`.
-
-### Build from source on Ubuntu
-
-After downloading or cloning the project, enter its folder and run:
+Use different names and enter `/ready` in every client to start.
+If other accounts cannot access the project folder, install the built client:
 
 ```bash
-cd Project1_CSE536
-./install
-export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+sudo install -m 0755 target/debug/fearless-conspiracy-client /usr/local/bin/fearless-conspiracy-client
 ```
 
-Run `./install` as your normal user. It uses `sudo` to install Ubuntu packages
-(`build-essential`, `ca-certificates`, `curl`, and `pkg-config`), installs Rustup
-if needed, downloads the project's Rust toolchain, and builds the game. Internet
-access is required. Existing Rustup installations are reused.
+Players can then run `fearless-conspiracy-client /tmp/fearless-conspiracy.sock "Alice"`
+from their own accounts. To test with several terminals on one account, start
+with `./server` instead; that mode allows the same Linux user for every player.
 
-The `export` command makes Rust available in your current terminal. For a new
-installation, Rustup also configures future shells. You can rerun `./install`
-if installation is interrupted.
+Host commands: `status`, `advance` (manual mode), `abort`, and `shutdown`.
 
-### Build from source on other Linux distributions
+## Play
 
-1. Use your distribution's package manager to install a C compiler and linker
-   (GCC or Clang), Make, `curl`, `pkg-config`, and CA certificates. On Ubuntu,
-   you can install these manually with:
+Everyone receives a secret role with its own abilities and goal. Use `/role`
+to check your role and `/help ROLE` for its instructions. Players can tell the
+truth or lie about their roles, so compare claims with night results and votes.
+Use `/players` to find target IDs: `/investigate 2`, for example, targets #2.
 
-   ```bash
-   sudo apt update
-   sudo apt install --yes build-essential ca-certificates curl pkg-config
-   ```
+### Goals
 
-2. Install Rust using the [official Rustup installer](https://rust-lang.org/tools/install/)
-   if you do not already have Rustup:
+- **Town:** Eliminate every Mafia player while at least one Town player survives.
+- **Mafia:** Eliminate every Town player while at least one Mafia player survives.
+  Having equal numbers of Town and Mafia does not immediately end the match.
+- **Jester (Neutral):** Convince the other players to publicly execute you.
+  Being killed at night does not count. Your personal win is separate from
+  the final Town/Mafia result.
 
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-   export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
-   ```
+### Phases
 
-3. Enter the project folder, select the toolchain, and build:
+The game announces each phase and tells you which actions are available.
+In automatic mode, timers move the game along. In manual mode, the host uses
+`advance`; reaching the nomination threshold still starts a trial immediately.
 
-   ```bash
-   cd Project1_CSE536
-   rustup show
-   cargo build --locked --bins
-   ```
+1. **Lobby:** Join and enter `/ready`. The match starts when the selected
+   number of players are connected and everyone is ready.
+2. **Role Reveal:** Receive your role privately and read its help. Mafia
+   members also learn their teammates' roles; the moderator can see all roles.
+3. **Day 1 Introductions:** Talk using `/say MESSAGE` or plain text, introduce
+   yourself, and make claims. There are no nominations or trials on Day 1;
+   the game goes to the first night afterward.
+4. **Night:** Choose your role's action, such as investigating, healing, or
+   attacking. You can change your choice or use `/cancel` before night ends.
+   Actions resolve together at the end of the phase, and public chat is closed.
+5. **Dawn:** Read the public death announcements and your private night results.
+   Deaths reveal roles and saved wills. Public chat stays closed until Discussion.
+6. **Discussion:** Share evidence, question claims, and decide whom you suspect.
+   Use public chat or `/whisper ID MESSAGE`; nominations open in the next phase.
+7. **Nominations:** Use `/vote ID` to nominate a living player, change your
+   target with another vote, or withdraw with `/unvote`. More than half of all
+   living players must nominate the same person: with five alive, three votes
+   are needed. You cannot nominate yourself. If the phase ends without enough
+   votes for anyone, the game goes to night.
+8. **Defense:** The nominated player goes on trial. Only that player can speak
+   publicly, using `/say MESSAGE` or plain text to explain their actions and
+   defend themselves.
+9. **Judgment:** Living players other than the accused choose `/guilty`,
+   `/innocent`, or `/abstain`. Not voting counts as abstaining. Choices are
+   revealed when voting ends. Guilty must outnumber innocent to convict;
+   a tie acquits. After acquittal, nominations resume with the remaining time,
+   up to three trials that day; after the third acquittal, night begins.
+10. **Last Words and Execution:** A convicted player gets one final chance
+    to speak publicly, then is executed. Their role and will are published.
+    Night begins afterward unless the match has ended.
+11. **Postgame:** Once a win condition is met, the server reveals the final
+    roles and results. Everyone can chat, including dead players, but gameplay
+    actions are finished. Use `/quit` when you are ready to leave.
 
-The checked-in `rust-toolchain.toml` selects Rust 1.95.0, Rustfmt, and Clippy;
-Rustup installs missing components for the project. See the
-[Rustup toolchain documentation](https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file)
-for how this works.
+After the first night, the usual cycle is Dawn, Discussion, Nominations,
+any trial, and Night again.
 
-The game requires Linux because it uses Linux Unix-socket peer credentials.
-On Windows, use Ubuntu under WSL; on macOS, use a Linux VM. Then follow the
-instructions above inside that Linux environment.
+### Roles and actions
 
-## Run
+The player count determines which roles are included. Most abilities are used
+at night; the Jailor chooses a prisoner during the day.
 
-Start the server in one terminal:
-
-```bash
-./server
-```
-
-Every launch of `./server` asks how many players you want (3–9), whether the host
-should advance phases manually, whether roles should be predictable, which
-automatic timer speed to use, and whether other local Linux accounts can
-connect. Press Enter to explicitly accept a displayed default, or type your
-choice. It shows the role lineup before opening the lobby.
-Predictable roles follow player ID order; otherwise the lineup is shuffled.
-
-Setup always runs, even when you supply options or redirect input. The server
-waits for answers before opening the lobby; if input closes before setup is
-complete, it exits without starting a game. Command-line options only supply
-the displayed defaults for the questions; they do not skip setup. `--setup`
-is still accepted for compatibility but is no longer needed.
-
-For multi user setup, log each player into a different Linux user
-account and start the server with shared local socket access:
-
-```bash
-./server --shared-local
-```
-
-Start one client from each players terminal using
-
-```bash
-./client "Name"
-```
-
-Enter `/ready` in every client. The game starts when the selected number of
-players are connected and everyone is ready.
-
-You can optionally suggest answers with game options. For example, this shows
-six players, predictable roles, and manual phase control as the setup defaults:
-
-```bash
-./server --players 6 --scenario --manual
-```
-
-The questions still appear, and you must answer or press Enter for each one.
-
-In the server terminal, use `status` to show the current game state, `advance`
-to move to the next phase, `abort` to cancel the current match, and `shutdown`
-to stop the server cleanly.
-
-## How to play
-
-- **Town** wins by eliminating every Mafia player.
-- **Mafia** wins by deceiving and eliminating the Town.
-- **Jester** wins by convincing the players to execute the Jester.
-
-Players receive secret roles. At night, players privately choose role actions.
-At dawn, deaths and other public results are announced. During the day, players
-discuss their evidence and nominate someone for trial. The accused gives a
-defense, and the other living players vote guilty, innocent, or abstain.
-
-Players are targeted by their displayed game IDs, such as `#1` or `#4`, not by
-their client names.
-
-### Common commands
-
-```text
-/help                    Show available commands.
-/help ROLE               Explain a role and its commands.
-/role                    Show your role.
-/players                 Show player IDs and status.
-/say MESSAGE             Send a public message.
-/whisper ID MESSAGE      Send a private message.
-/vote ID                 Nominate a player for trial.
-/unvote                  Remove your nomination.
-/guilty                  Vote to execute the accused.
-/innocent                Vote to acquit the accused.
-/abstain                 Abstain from judgment.
-/will set TEXT           Set your last will.
-/cancel                  Cancel your night action.
-/quit                    Leave the game.
-```
-
-Plain text is sent to the appropriate current chat. It is public during normal
-daytime discussion and becomes Mafia or jail chat at night when applicable.
-
-### Role commands
-
-| Role | Command | Ability |
+| Role | Command | What it does |
 |---|---|---|
-| Sheriff | `/investigate ID` | Check whether someone appears suspicious. |
-| Doctor | `/heal ID` or `/heal self` | Protect someone from an attack. |
-| Lookout | `/watch ID` | See who visited someone. |
-| Escort | `/block ID` | Stop someone's night ability. |
-| Jailor | `/jail ID`, `/execute`, `/spare` | Detain and question someone. |
-| Godfather | `/kill ID` | Choose the Mafia target. |
-| Mafioso | `/kill ID` | Perform the Mafia attack. |
-| Framer | `/frame ID` | Make someone appear suspicious. |
-| Jester | `/haunt ID` | Haunt an eligible voter after execution. |
+| Sheriff | `/investigate ID` | Check whether a player appears suspicious. A nonsuspicious result does not guarantee they are Town. |
+| Doctor | `/heal ID` or `/heal self` | Protect a player from an ordinary attack. You can heal yourself once per game. |
+| Lookout | `/watch ID` | Watch another player and learn up to three visitors to them. This does not tell you whether the watched player left home. |
+| Escort | `/block ID` | Block a player's night ability. The Escort is immune to ordinary roleblocks. |
+| Jailor | `/jail ID`, `/execute`, `/spare` | Choose a prisoner during the day, question them at night, and decide whether to execute. Executions are unavailable on Night 1. |
+| Godfather | `/kill ID` | Choose the Mafia target; an available Mafioso normally carries out the attack. The Godfather appears innocent to the Sheriff. |
+| Mafioso | `/kill ID` | Perform the Mafia attack. A valid Godfather order takes priority over your own target. |
+| Framer | `/frame ID` | Make a non-Mafia player appear suspicious to the Sheriff. |
+| Jester | `/haunt ID` | After being publicly executed, haunt an eligible living guilty or abstaining voter the following night. |
 
-Mafia players can use `/mafia MESSAGE`, the Jailor and prisoner can use
-`/jailchat MESSAGE`, and dead players can use `/dead MESSAGE`.
+Protection, roleblocks, and framing can change the outcome of another player's
+action. A protected player can survive an attack, and a framed Town player can
+look suspicious. Read your private results and use `/help ROLE` for full details.
 
-Choose any player count from 3 through 9 with `--players NUMBER`. The equivalent
-presets are `demo3`, `standard4`, `demo5`, `standard6`, `standard7`, `standard8`,
-and `full9`. The default remains five players.
+### Chat, wills, and leaving
 
-| Players | Preset | Roles |
-|---|---|---|
-| 3 | `demo3` | Sheriff, Doctor, Mafioso |
-| 4 | `standard4` | Sheriff, Doctor, Lookout, Mafioso |
-| 6 | `standard6` | Sheriff, Doctor, Lookout, Escort, Mafioso, Jester |
+Use `/say MESSAGE` or plain text for public chat during Introductions,
+Discussion, and Nominations. During Defense and Last Words, only the accused
+may speak publicly. Whispers are available during the ordinary daytime chat
+phases; their contents are private, but everyone sees that a whisper happened.
+At night, Mafia can use `/mafia MESSAGE`, and the Jailor and prisoner can use
+`/jailchat MESSAGE`. Dead players can talk to one another with `/dead MESSAGE`
+but cannot vote or take ordinary role actions.
 
-Three-player games are quick demos where one death can decide the match;
-four players give more room for discussion. Run `./server` and select either
-count in the setup questions.
+Save notes with `/will set TEXT` and read them with `/will show`. Your will is
+published when you die, so it can preserve investigation results or mislead
+other players. You can use `/quit` at any time, but leaving during a match
+counts as forfeiting rather than pausing your place in the game.
+
+## Communications API
+
+**File: `src/comm.rs`, imported as `fearless_conspiracy::comm`.**
+It uses Unix-domain stream sockets, length-prefixed JSON messages, and
+reader/writer threads. Group and public messages are sent to each recipient.
+
+| Method | Purpose |
+|---|---|
+| `ServerTransport::bind(path, limits)` | Start listening. |
+| `server.recv_timeout(duration)` | Receive a connection, message, or disconnection event. |
+| `server.send_to(peer, message)` | Queue a message for one peer. |
+| `server.send_group(peers, message)` | Queue a message for selected peers. |
+| `server.broadcast(message)` | Queue a message for everyone. |
+| `server.connected_peers()` | List peer IDs. |
+| `server.disconnect(peer, reason)` | Close a connection. |
+| `server.release_uid(uid)` | Free a lobby account reservation. |
+| `server.shutdown_gracefully(reason, duration)` | Drain output and close connections. |
+| `ClientTransport::connect(path, name, limits)` | Connect and complete the handshake. |
+| `client.welcome()` | Read the handshake response. |
+| `client.send(message)` | Queue a command. |
+| `client.recv_timeout(duration)` | Receive a server message. |
+| `client.close()` | Disconnect. |
+| `write_message(writer, message)` | Write one framed JSON message. |
+| `read_message(reader)` | Read one framed JSON message. |
+
+The API uses `ClientMessage`, `ServerMessage`, `ServerEvent`, and `PeerId`.
+`TransportLimits` configures queues, timeouts, permissions, and UID checks.
+Errors use `CommError`; receive methods return `None` on timeout. Group sends
+return `DeliveryReport`; shutdown returns `ShutdownReport`. Queued output
+does not mean the recipient has read it.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| **`src/comm.rs`** | **Entire communications library.** |
+| `src/lib.rs` | Exports the modules. |
+| `src/game.rs` | Game state, phases, voting, chat, and wins. |
+| `src/roles.rs` | Roles, presets, and night actions. |
+| `src/command.rs` | Player commands and help. |
+| `src/rate_limit.rs` | Command limits and duplicate-request checks. |
+| `src/server.rs` | Setup, host commands, and timers. |
+| `src/bin/fearless-conspiracy-server.rs` | Moderator program. |
+| `src/bin/fearless-conspiracy-client.rs` | Player program. |
+| `src/bin/ipc-demo-server.rs`, `src/bin/ipc-demo-client.rs` | Examples of private, group, and broadcast delivery. |
+| `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml` | Dependencies and Rust version. |
+| `install`, `server`, `client` | Setup and launch scripts. |
+| `scripts/check.sh`, `scripts/smoke-game.sh` | Code checks and gameplay test. |
+| `scripts/preflight-multi-user.sh` | Checks an optional group-based account setup. |
+| `scripts/package-release.sh`, `scripts/package-submission.sh` | Package binaries or the class submission. |
+| `scripts/build-report.py` | Generates the report PDF. |
+| `docs/`, `ScreenshotsForPDF/`, `output/pdf/` | Report text, checklist, screenshots, and PDF. |
+
+Tests live alongside the Rust code. Run them with `cargo test --locked`.
