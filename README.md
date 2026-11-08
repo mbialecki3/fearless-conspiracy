@@ -26,18 +26,28 @@ a C compiler/linker are already installed, use `cargo build --locked --bins`.
 ## Run
 
 Each player needs a separate non-root Linux account, different from the host.
-Start the server as your normal user:
+For protected play, use a dedicated Ubuntu/systemd VM with cgroup v2. The
+existing server and player accounts need distinct private primary groups and
+no sudo privileges. Build as your normal user, then launch:
 
 ```bash
-./server --strict-users --shared-local
+cargo build --locked --bins
+sudo ./server --protected --server-user fearless_host \
+  --player fearless_p1 --player fearless_p2 --player fearless_p3
 ```
+
+Add a `--player ACCOUNT` for each participant (3-9). Protected startup enables
+VM-wide `hidepid=2`, limits each player's user slice to 25% of one CPU, 256 MiB
+memory and 64 tasks, and blocks other players' cgroup statistics. It checks
+isolation before starting the server without root or capabilities. These
+restrictions remain until reboot; run clients from their normal login sessions.
 
 Answer the setup questions; press Enter to accept a default. Choose manual
 phases if you want the host to advance the game. In a separate terminal under
 each player's account, run:
 
 ```bash
-./client "Alice"
+./client --socket /run/fearless-conspiracy/game.sock "Alice"
 ```
 
 Use different names and enter `/ready` in every client to start.
@@ -47,9 +57,10 @@ If other accounts cannot access the project folder, install the built client:
 sudo install -m 0755 target/debug/fearless-conspiracy-client /usr/local/bin/fearless-conspiracy-client
 ```
 
-Players can then run `fearless-conspiracy-client /tmp/fearless-conspiracy.sock "Alice"`
-from their own accounts. To test with several terminals on one account, start
-with `./server` instead; that mode allows the same Linux user for every player.
+Players can then run `fearless-conspiracy-client /run/fearless-conspiracy/game.sock "Alice"`
+from their own accounts. For local play without OS restrictions, use
+`./server --strict-users --shared-local` and `./client "Alice"`. To test several
+terminals on one account, use `./server`; that mode allows the same UID.
 
 Host commands: `status`, `advance` (manual mode), `abort`, and `shutdown`.
 

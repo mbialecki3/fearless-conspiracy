@@ -4,7 +4,9 @@ import importlib.util
 from pathlib import Path
 import pwd
 import subprocess
+import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location("protected_server", Path(__file__).with_name("protected-server.py"))
@@ -31,6 +33,12 @@ class ProtectedStartupTests(unittest.TestCase):
     def test_membership_in_another_players_private_group_is_rejected(self):
         with patch.object(launcher, "groups", return_value={2001, 2002}):
             with self.assertRaisesRegex(RuntimeError, "another game account"):
+                launcher.validate_accounts(self.server, self.players)
+
+    def test_server_account_must_not_have_administrative_group_access(self):
+        membership = lambda entry: {entry.pw_gid} | ({27} if entry.pw_uid == 2000 else set())
+        with patch.object(launcher, "groups", side_effect=membership), patch.object(launcher.grp, "getgrgid", side_effect=lambda gid: SimpleNamespace(gr_name="sudo" if gid == 27 else f"group{gid}")), patch.object(Path, "exists", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "privileged group"):
                 launcher.validate_accounts(self.server, self.players)
 
     def test_remount_keeps_security_flags_and_removes_group_exemption(self):
@@ -62,6 +70,20 @@ class ProtectedStartupTests(unittest.TestCase):
         self.assertIn("--inh-caps=-all", args)
         self.assertIn("--ambient-caps=-all", args)
         self.assertIn("2000,2001,2002", args)
+
+    def test_staging_replaces_a_symlink_without_overwriting_its_target(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "built-server"
+            source.write_bytes(b"\x7fELFtest")
+            victim = root / "private-file"
+            victim.write_text("unchanged")
+            (root / "fearless-conspiracy-server").symlink_to(victim)
+            destination = launcher.stage_binary(source, root)
+            self.assertFalse(destination.is_symlink())
+            self.assertEqual(destination.read_bytes(), source.read_bytes())
+            self.assertEqual(destination.stat().st_mode & 0o7777, 0o555)
+            self.assertEqual(victim.read_text(), "unchanged")
 
 
 if __name__ == "__main__":

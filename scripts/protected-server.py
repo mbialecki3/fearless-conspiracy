@@ -6,9 +6,11 @@ import grp
 import os
 from pathlib import Path
 import pwd
+import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CGROUP = Path("/sys/fs/cgroup")
@@ -48,9 +50,9 @@ def validate_accounts(server, players):
     accounts = [server, *players]
     require(len({entry.pw_uid for entry in accounts}) == len(accounts), "server and players must have distinct Linux UIDs")
     require(len({entry.pw_gid for entry in accounts}) == len(accounts), "server and players need distinct private primary groups")
-    for player in players:
+    for player in [*players, server]:
         membership = groups(player)
-        require(not any(entry.pw_gid in membership for entry in accounts if entry.pw_uid != player.pw_uid),
+        require(player == server or not any(entry.pw_gid in membership for entry in accounts if entry.pw_uid != player.pw_uid),
                 f"{player.pw_name} belongs to another game account's private group")
         names = {grp.getgrgid(gid).gr_name for gid in membership}
         require(not names & ADMIN_GROUPS, f"{player.pw_name} belongs to a privileged group: {sorted(names & ADMIN_GROUPS)}")
@@ -68,6 +70,7 @@ def proc_status(pid):
 def validate_sessions(players):
     """Reject already-running sessions with different mounts or extra powers."""
     uids = {entry.pw_uid for entry in players}
+    memberships = {entry.pw_uid: groups(entry) for entry in players}
     namespace = os.stat("/proc/self/ns/mnt").st_ino
     require(namespace == os.stat("/proc/1/ns/mnt").st_ino,
             "run the launcher in the VM's host mount namespace")
@@ -82,6 +85,9 @@ def validate_sessions(players):
             require(len(identities) == 1 and not int(fields["CapEff"], 16)
                     and not int(fields["CapPrm"], 16) and not int(fields["CapAmb"], 16),
                     f"player process {directory.name} has elevated credentials")
+            uid = next(iter(identities))
+            process_groups = set(map(int, (fields["Gid"] + " " + fields["Groups"]).split()))
+            require(process_groups <= memberships[uid], f"player process {directory.name} has unexpected group privileges; log it out first")
             require(os.stat(directory / "ns/mnt").st_ino == namespace,
                     f"player process {directory.name} uses a different /proc view; log it out first")
         except FileNotFoundError:
@@ -118,6 +124,14 @@ def configure_slice(entry, limits):
     os.chown(directory, 0, entry.pw_gid)
     command("setfacl", "--set=u::rwx,g::r-x,o::---", directory)
     (directory / "cgroup.max.descendants").write_text("256")
+    for key, filename in (("MemoryHigh", "memory.high"), ("MemoryMax", "memory.max"),
+                          ("MemorySwapMax", "memory.swap.max"), ("TasksMax", "pids.max")):
+        value = limits[key]
+        expected = str(int(value[:-1]) * 1024 * 1024) if value.endswith("M") else value
+        require((directory / filename).read_text().strip() == expected, f"kernel did not apply {key} for {entry.pw_name}")
+    quota, period = (directory / "cpu.max").read_text().split()
+    require(quota != "max" and int(quota) * 100 == int(period) * int(limits["CPUQuota"].rstrip("%")),
+            f"kernel did not apply CPUQuota for {entry.pw_name}")
     return directory
 
 
@@ -145,15 +159,34 @@ def unprivileged(entry, extra_groups=()):
             "--no-new-privs", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all"]
 
 
+def stage_binary(source, directory):
+    """Copy data without executing it as root; replace without following links."""
+    with source.open("rb") as incoming:
+        require(incoming.read(4) == b"\x7fELF", "the prebuilt server must be a Linux ELF executable")
+        incoming.seek(0)
+        fd, temporary = tempfile.mkstemp(prefix=".server-", dir=directory)
+        try:
+            with os.fdopen(fd, "wb") as outgoing:
+                shutil.copyfileobj(incoming, outgoing)
+                os.fchmod(outgoing.fileno(), 0o555)
+            destination = directory / "fearless-conspiracy-server"
+            os.replace(temporary, destination)
+            return destination
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+
+
 def verify_visibility(server, players, slices):
-    with subprocess.Popen(["/usr/bin/sleep", "30"], user=server.pw_uid, group=server.pw_gid, extra_groups=[], env=ENV) as sentinel:
+    with subprocess.Popen(["/usr/bin/sleep", "infinity"], user=server.pw_uid, group=server.pw_gid, extra_groups=[], env=ENV) as sentinel:
         try:
             for player in players:
+                require(sentinel.poll() is None, "the process-visibility probe exited unexpectedly")
                 others = [str(path / "cpu.stat") for uid, path in slices.items() if uid != player.pw_uid]
                 result = subprocess.run([*unprivileged(player), "/usr/bin/python3", "-I", "-c", PROBE,
                                          str(sentinel.pid), str(slices[player.pw_uid]), *others],
                                         check=True, capture_output=True, text=True, env=ENV, cwd="/")
                 print("Verified player isolation:", result.stdout.strip(), flush=True)
+            require(sentinel.poll() is None, "the process-visibility probe exited unexpectedly")
         finally:
             sentinel.terminate()
             sentinel.wait()
@@ -169,6 +202,8 @@ def main():
     require(os.geteuid() == 0, "protected startup requires sudo; build the binaries first as your normal user")
     require(Path("/run/systemd/system").is_dir() and (CGROUP / "cgroup.controllers").exists(),
             "protected startup requires systemd and cgroup v2")
+    require({"cpu", "memory", "pids"} <= set((CGROUP / "cgroup.controllers").read_text().split()),
+            "the CPU, memory and pids cgroup controllers must be available")
     for program in ("systemctl", "systemd-run", "setpriv", "setfacl"):
         info = (Path("/usr/bin") / program).stat()
         require(info.st_uid == 0 and not info.st_mode & 0o022, f"install a trusted /usr/bin/{program}")
@@ -198,6 +233,9 @@ def main():
     os.chown(RUNTIME, server.pw_uid, server.pw_gid)
     RUNTIME.chmod(0o755)
     os.umask(0o077)
+    # A dedicated server account need not have access to the moderator's home
+    # directory. Stage the built executable without building/running it as root.
+    binary = stage_binary(binary, RUNTIME)
     print("Applying VM-wide /proc protection and runtime account limits; these remain until reboot.", flush=True)
     restrict_proc()
     slices = {entry.pw_uid: configure_slice(entry, SERVER_LIMITS if entry == server else PLAYER_LIMITS)
