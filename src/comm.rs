@@ -48,6 +48,9 @@ pub struct TransportLimits {
     pub require_unique_uid: bool,
     pub reject_root: bool,
     pub reject_server_uid: bool,
+    /// Optional account allowlist. Protected launches also require user slices.
+    pub allowed_uids: Option<HashSet<u32>>,
+    pub require_user_slice: bool,
     /// Unix permission bits applied to the bound socket pathname.
     pub socket_mode: u32,
 }
@@ -65,6 +68,8 @@ impl Default for TransportLimits {
             require_unique_uid: true,
             reject_root: true,
             reject_server_uid: true,
+            allowed_uids: None,
+            require_user_slice: false,
             socket_mode: 0o660,
         }
     }
@@ -760,6 +765,57 @@ fn reject_stream(mut stream: UnixStream, reason: &str, write_timeout: Duration) 
     let _ = stream.shutdown(std::net::Shutdown::Both);
 }
 
+fn cgroup_contains_pid(root: &Path, pid: i32) -> io::Result<bool> {
+    // hidepid prevents reading /proc/PEER_PID/cgroup. Only the trusted server
+    // is granted access to all registered players' cgroup trees.
+    let mut pending = vec![root.to_path_buf()];
+    let mut visited = 0;
+    while let Some(path) = pending.pop() {
+        visited += 1;
+        if visited > 4096 {
+            return Err(io::Error::other("player cgroup tree is too large"));
+        }
+        if fs::read_to_string(path.join("cgroup.procs"))?
+            .lines()
+            .any(|line| line.parse::<i32>() == Ok(pid))
+        {
+            return Ok(true);
+        }
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                pending.push(entry.path());
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn check_peer_access(
+    credentials: &PeerCredentials,
+    limits: &TransportLimits,
+) -> Result<(), String> {
+    if limits
+        .allowed_uids
+        .as_ref()
+        .is_some_and(|uids| !uids.contains(&credentials.uid))
+    {
+        return Err("this account is not registered for the protected game".into());
+    }
+    if limits.require_user_slice {
+        let path = PathBuf::from(format!(
+            "/sys/fs/cgroup/user.slice/user-{}.slice",
+            credentials.uid
+        ));
+        if !cgroup_contains_pid(&path, credentials.pid)
+            .map_err(|_| "cannot verify the player's resource limits")?
+        {
+            return Err("start the client from your resource-limited login session".into());
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_connection(
     mut stream: UnixStream,
@@ -780,6 +836,10 @@ fn handle_connection(
             return;
         }
     };
+    if let Err(reason) = check_peer_access(&credentials, &limits) {
+        reject_stream(stream, &reason, limits.write_timeout);
+        return;
+    }
     if limits.reject_root && credentials.uid == 0 {
         reject_stream(stream, "root clients are not allowed", limits.write_timeout);
         return;
@@ -1116,6 +1176,39 @@ mod tests {
             write_timeout: Duration::from_secs(1),
             ..TransportLimits::default()
         }
+    }
+
+    #[test]
+    fn protected_connections_reject_unregistered_accounts_before_handshake() {
+        let path = socket_path("account-allowlist");
+        let limits = TransportLimits {
+            allowed_uids: Some(HashSet::new()),
+            ..local_test_limits()
+        };
+        let _server = ServerTransport::bind(&path, limits).unwrap();
+        let mut stream = UnixStream::connect(&path).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let response: ServerMessage = read_message(&mut stream).unwrap();
+        assert!(
+            matches!(response, ServerMessage::Error { text } if text.contains("not registered"))
+        );
+    }
+
+    #[test]
+    fn cgroup_membership_requires_a_pid_inside_the_registered_tree() {
+        let root = socket_path("cgroup-tree");
+        let session = root.join("session.scope");
+        fs::create_dir_all(&session).unwrap();
+        fs::write(root.join("cgroup.procs"), "").unwrap();
+        fs::write(session.join("cgroup.procs"), "123\n456\n").unwrap();
+        assert!(cgroup_contains_pid(&root, 456).unwrap());
+        assert!(!cgroup_contains_pid(&root, 45).unwrap());
+        assert!(!cgroup_contains_pid(&root, 789).unwrap());
+        fs::remove_file(session.join("cgroup.procs")).unwrap();
+        assert!(cgroup_contains_pid(&root, 456).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn connected_peer(server: &mut ServerTransport) -> (PeerId, PeerCredentials) {

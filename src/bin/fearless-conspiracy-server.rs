@@ -26,6 +26,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if options.setup {
         options.configure_lobby(&mut io::stdin().lock(), &mut io::stdout().lock())?;
     }
+    if let Some(uids) = &options.protected_users {
+        let uid = nix::unistd::Uid::effective().as_raw();
+        if uid == 0 || uids.contains(&uid) || uids.len() < options.preset.roles().len() {
+            return Err(
+                "protected games need a separate non-root server and enough registered players"
+                    .into(),
+            );
+        }
+    }
     let path = &options.path;
     let preset = options.preset;
     let allow_same_uid = options.allow_same_uid;
@@ -40,6 +49,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         require_unique_uid: !allow_same_uid,
         reject_server_uid: !allow_same_uid,
         socket_mode,
+        allowed_uids: options
+            .protected_users
+            .as_ref()
+            .map(|uids| uids.iter().copied().collect()),
+        require_user_slice: options.protected_users.is_some(),
         ..TransportLimits::default()
     };
     let mut transport = ServerTransport::bind(path, limits)?;

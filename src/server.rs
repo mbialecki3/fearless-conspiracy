@@ -135,6 +135,7 @@ pub const SERVER_USAGE: &str =
   [--preset demo3|standard4|demo5|standard6|standard7|standard8|full9] [--setup]
   [--scenario] [--manual] [--fast] [--allow-same-uid] [--shared-local]
   [--duration PHASE=SECONDS]...
+  [--protected-users UID,UID,...] (set by the privileged launcher)
 Host commands: help, status, advance, abort, shutdown.";
 
 #[derive(Debug)]
@@ -146,6 +147,7 @@ pub struct ServerOptions {
     pub manual: bool,
     pub allow_same_uid: bool,
     pub shared_local: bool,
+    pub protected_users: Option<Vec<u32>>,
     pub durations: Durations,
 }
 
@@ -159,6 +161,7 @@ impl ServerOptions {
             manual: false,
             allow_same_uid: false,
             shared_local: false,
+            protected_users: None,
             durations: Durations::default(),
         };
         let mut path_set = false;
@@ -171,6 +174,23 @@ impl ServerOptions {
                 "--manual" => options.manual = true,
                 "--allow-same-uid" => options.allow_same_uid = true,
                 "--shared-local" => options.shared_local = true,
+                "--protected-users" => {
+                    let uids = arguments.next().ok_or("--protected-users requires UIDs")?;
+                    let uids: Vec<u32> = uids
+                        .split(',')
+                        .map(|value| value.parse().map_err(|_| "invalid protected player UID"))
+                        .collect::<Result<_, _>>()?;
+                    let unique: std::collections::HashSet<_> = uids.iter().copied().collect();
+                    if !(3..=9).contains(&uids.len())
+                        || unique.len() != uids.len()
+                        || unique.contains(&0)
+                    {
+                        return Err(
+                            "protected games require 3-9 distinct non-root player UIDs".into()
+                        );
+                    }
+                    options.protected_users = Some(uids);
+                }
                 "--fast" => options.durations = Durations::fast(),
                 "--players" => {
                     options.preset = match arguments.next().map(String::as_str) {
@@ -235,6 +255,9 @@ impl ServerOptions {
                 _ => return Err(format!("unknown duration phase {phase}")),
             };
             *slot = duration;
+        }
+        if options.protected_users.is_some() && options.allow_same_uid {
+            return Err("protected games cannot disable separate-account checks".into());
         }
         Ok(options)
     }
@@ -467,6 +490,30 @@ pub fn advance_boundary(game: &mut Game) -> Result<Vec<GameEvent>, GameError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protected_accounts_are_distinct_and_cannot_allow_same_uid() {
+        let options =
+            ServerOptions::parse(&["--protected-users".into(), "2001,2002,2003".into()]).unwrap();
+        assert_eq!(options.protected_users, Some(vec![2001, 2002, 2003]));
+        for value in [
+            "0,2002,2003",
+            "2001,2001,2003",
+            "2001,2002",
+            "alice,2002,2003",
+        ] {
+            assert!(ServerOptions::parse(&["--protected-users".into(), value.into()]).is_err());
+        }
+        for args in [
+            vec!["--allow-same-uid", "--protected-users", "2001,2002,2003"],
+            vec!["--protected-users", "2001,2002,2003", "--allow-same-uid"],
+        ] {
+            assert!(
+                ServerOptions::parse(&args.into_iter().map(str::to_string).collect::<Vec<_>>())
+                    .is_err()
+            );
+        }
+    }
     use crate::game::{GameConfig, PlayerId};
     use crate::roles::Preset;
 
