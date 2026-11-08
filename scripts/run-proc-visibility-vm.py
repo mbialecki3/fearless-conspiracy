@@ -98,7 +98,7 @@ def main():
             binary = Path("/usr/bin") / name
             copy_file(binary)
             copy_libs(binary)
-        for binary in [Path("/usr/sbin") / name for name in ("useradd", "chpasswd", "nologin")] + [Path("/bin/bash")]:
+        for binary in [Path("/usr/sbin") / name for name in ("useradd", "userdel", "usermod", "groupadd", "groupdel", "chpasswd", "nologin")] + [Path("/bin/bash")]:
             copy_file(binary)
             copy_libs(binary)
         for plugin in Path("/usr/libexec/sudo").glob("*.so*"):

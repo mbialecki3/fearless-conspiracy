@@ -2,9 +2,11 @@
 """Destructive resource tests: only run in the marked, disposable QEMU VM."""
 import json
 import ctypes
+import importlib.util
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -99,9 +101,22 @@ def main():
         send(bootstrap, "shutdown")
         bootstrap.wait(timeout=20)
         check("bootstrap game shuts down normally", bootstrap.returncode == 0 and not socket.exists())
+        def players_removed(count):
+            names = {f"fearless_p{number}" for number in range(1, count+1)}
+            users = {line.split(":")[0] for line in Path("/etc/passwd").read_text().splitlines()}
+            groups = {line.split(":")[0] for line in Path("/etc/group").read_text().splitlines()}
+            return not names & users and not names & groups and all(not Path(f"/home/{name}").exists() for name in names)
+
+        check("normal shutdown removes player accounts homes and groups", players_removed(9))
+        check("normal shutdown removes saved player credentials", set(json.loads((state / "accounts.json").read_text())) == {"fearless_host"} and not (state / "player-logins.txt").exists())
+        spec = importlib.util.spec_from_file_location("protected_launcher", LAUNCHER)
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        helper.provision_accounts("fearless_host", 9)  # Fixtures for legacy-account refusal checks.
         baseline_registry = (state / "accounts.json").read_bytes()
         baseline_shadow = Path("/etc/shadow").read_bytes()
-        subprocess.run(["/usr/sbin/useradd", "--uid", "2010", "--user-group", "--no-create-home", "outsider"], check=True, capture_output=True)
+        subprocess.run(["/usr/sbin/groupadd", "--gid", "1000", "outsider"], check=True, capture_output=True)
+        subprocess.run(["/usr/sbin/useradd", "--uid", "1000", "--gid", "1000", "--no-create-home", "outsider"], check=True, capture_output=True)
         # Existing-account mode must continue refusing unrelated accounts before
         # changing restrictions. Automatic mode must not adopt them either.
         collision = subprocess.run([sys.executable, LAUNCHER, "--server-user", "outsider", "--players", "3"], capture_output=True, text=True)
@@ -165,7 +180,7 @@ def main():
             cgroup_read = run_as(uid, 'from pathlib import Path; import sys; print(Path(sys.argv[1]).read_text())', other)
             write_limit = run_as(uid, 'from pathlib import Path; import sys; Path(sys.argv[1]).write_text("max")', CGROUP / f"user-{uid}.slice/memory.max")
             check(f"UID {uid} cannot inspect or remove limits", result.returncode != 0 and cgroup_read.returncode != 0 and write_limit.returncode != 0)
-        outsider = run_as(2010, 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); print(s.recv(4096))', socket)
+        outsider = run_as(1000, 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); print(s.recv(4096))', socket)
         check("unregistered account rejected", "not registered" in outsider.stdout, outsider.stdout + outsider.stderr)
         outside = run_as(2001, 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); print(s.recv(4096))', socket)
         check("registered account outside its limited slice rejected", "resource-limited login session" in outside.stdout, outside.stdout + outside.stderr)
@@ -238,10 +253,52 @@ finally:
         check("game survives the resource tests", server.poll() is None and all(process.poll() is None for process in clients.values()))
         send(clients[town], "/players")
         time.sleep(0.5)
+        leftover = launch(["/usr/bin/sleep", "infinity"], "leftover-session", 2001)
+        sleeper_pids = root / "fc-test-leftover-session.scope/cgroup.procs"
+        wait_for(lambda: sleeper_pids.exists() and any(re.search(r"^Uid:\s+2001\s", Path(f"/proc/{pid}/status").read_text(), re.M)
+                 for pid in sleeper_pids.read_text().split()), "persistent player session")
+        check("player session remains active before shutdown", leftover.poll() is None)
         send(server, "shutdown")
         server.wait(timeout=20)
         check("game shuts down normally", server.returncode == 0, log("server")[-1000:])
-        check("protections remain after shutdown", "hidepid=invisible" in Path("/proc/mounts").read_text() and (root / "pids.max").read_text().strip() == "64")
+        wait_for(lambda: leftover.poll() is not None, "player session termination")
+        check("cleanup terminates remaining player sessions", leftover.poll() is not None)
+        check("live-player shutdown removes accounts homes and groups", players_removed(9))
+        check("unrelated account survives cleanup", "outsider:" in Path("/etc/passwd").read_text())
+        check("proc protection remains after shutdown", "hidepid=invisible" in Path("/proc/mounts").read_text())
+
+        # Existing-account mode must leave both identities and home data alone.
+        helper.provision_accounts("fearless_host", 3)
+        run_as(2001, 'from pathlib import Path; Path("/home/fearless_p1/keep-me").write_text("player notes")').check_returncode()
+        manual_args = [sys.executable, LAUNCHER]
+        for number in range(1, 4):
+            manual_args += ["--player", f"fearless_p{number}"]
+        manual_args += ["--", "--manual", "--scenario", "--preset", "demo3"]
+        manual = launch(manual_args, "manual-existing")
+        for _ in range(4):
+            send(manual, "")
+        wait_for(lambda: socket.exists() or manual.poll() is not None, "existing-account startup")
+        check("existing-account mode starts normally", socket.exists() and manual.poll() is None, log("manual-existing"))
+        before_users = Path("/etc/passwd").read_bytes()
+        overlap = subprocess.run([sys.executable, LAUNCHER, "--players", "3", "--socket", "/run/fearless-conspiracy/other.sock"], capture_output=True, text=True)
+        check("overlapping game cannot delete active participants", overlap.returncode != 0 and "already running" in overlap.stderr and Path("/etc/passwd").read_bytes() == before_users)
+        send(manual, "shutdown")
+        manual.wait(timeout=20)
+        check("existing-account mode preserves accounts and home data", manual.returncode == 0 and Path("/etc/passwd").read_bytes() == before_users and Path("/home/fearless_p1/keep-me").read_text() == "player notes")
+
+        for signum, label in ((signal.SIGTERM, "terminate"), (signal.SIGINT, "interrupt")):
+            interrupted = launch([sys.executable, LAUNCHER, "--players", "3", "--", "--manual", "--scenario", "--preset", "demo3"], label)
+            for _ in range(4):
+                send(interrupted, "")
+            wait_for(lambda: socket.exists() or interrupted.poll() is not None, label + " startup", timeout=90)
+            check(label + " test starts normally", socket.exists() and interrupted.poll() is None, log(label))
+            interrupted.send_signal(signum)
+            interrupted.wait(timeout=30)
+            check(label + " cleans accounts homes groups credentials and socket", interrupted.returncode == 128 + signum and players_removed(3) and not socket.exists() and not (state / "player-logins.txt").exists(), {"exit": interrupted.returncode, "log": log(label)[-700:]})
+        failed = launch([sys.executable, LAUNCHER, "--players", "3", "--", "--not-a-game-option"], "failed-game")
+        failed.wait(timeout=60)
+        check("failed game startup cleans provisioned players", failed.returncode != 0 and players_removed(3) and not socket.exists()
+              and not (state / "player-logins.txt").exists(), {"exit": failed.returncode, "log": log("failed-game")[-700:]})
         evidence["pass"] = True
     except BaseException:
         evidence["error"] = traceback.format_exc()
