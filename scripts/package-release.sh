@@ -29,6 +29,8 @@ cargo build --locked --release --bins --target "$release_target"
 package_root="$(mktemp -d)"
 trap 'rm -rf -- "$package_root"' EXIT
 mkdir -p "$package_root/$package_name/bin" "$output_dir"
+mkdir -p "$package_root/$package_name/scripts"
+cp -- scripts/protected-server.py "$package_root/$package_name/scripts/"
 cp -- server client README.md "$package_root/$package_name/"
 for binary in fearless-conspiracy-server fearless-conspiracy-client ipc-demo-server ipc-demo-client; do
   cp -- "target/$release_target/release/$binary" "$package_root/$package_name/bin/"

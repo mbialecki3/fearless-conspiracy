@@ -4,6 +4,11 @@ set -euo pipefail
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$project_root"
 
+if [[ "${1:-}" == --protected ]]; then
+  shift
+  exec /usr/bin/python3 -I "$project_root/scripts/protected-server.py" "$@"
+fi
+
 socket_path="${FEARLESS_CONSPIRACY_SOCKET:-/tmp/fearless-conspiracy.sock}"
 strict_users=0
 server_args=(--setup)
@@ -11,6 +16,7 @@ server_args=(--setup)
 usage() {
   cat <<'EOF'
 Usage: ./server [options]
+       sudo ./server --protected [--server-user ACCOUNT] --player ACCOUNT ... [-- GAME_OPTIONS]
 
 Always asks questions to set up the lobby, including with options or redirected
 input. Press Enter to accept a displayed default; closed input cancels setup.
@@ -61,6 +67,11 @@ done
 
 if (( ! strict_users )); then
   server_args+=(--allow-same-uid)
+fi
+
+if (( EUID == 0 )); then
+  printf 'Use --protected when starting with sudo; the game itself runs without root.\n' >&2
+  exit 1
 fi
 
 if [[ -x "$project_root/bin/fearless-conspiracy-server" ]]; then
