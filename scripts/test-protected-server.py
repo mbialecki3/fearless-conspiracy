@@ -46,6 +46,8 @@ class ProtectedStartupTests(unittest.TestCase):
                 uid = 2000 + len(accounts)
                 accounts[name] = pwd.struct_passwd((name, "x", uid, uid, args[args.index("--comment")+1],
                                                     args[args.index("--home-dir")+1], args[args.index("--shell")+1]))
+            if program == "userdel" and "--help" not in args:
+                del accounts[args[-1]]
             return ""
 
         with tempfile.TemporaryDirectory() as temporary, patch.object(Path, "lstat", root_owned), \
@@ -112,6 +114,64 @@ class ProtectedStartupTests(unittest.TestCase):
             self.assertTrue(all(record["ready"] for record in registry.values()))
             self.assertEqual(attempted, [f"fearless_p2:{registry['fearless_p2']['password']}\n"])
             self.assertEqual(sum(program == "useradd" and "--help" not in args for program, args, _ in calls), 4)
+
+    def test_cleanup_removes_only_managed_players_and_their_credentials(self):
+        with self.provisioning() as (accounts, calls):
+            launcher.provision_accounts("fearless_host", 3)
+            accounts["outsider"] = entry("outsider", 5000, 5000)
+            errors = launcher.cleanup_players(["fearless_host", "outsider", "fearless_p1", "fearless_p2", "fearless_p3"])
+            self.assertEqual(errors, [])
+            self.assertEqual(set(accounts), {"fearless_host", "outsider"})
+            self.assertEqual(set(json.loads((launcher.STATE / "accounts.json").read_text())), {"fearless_host"})
+            self.assertFalse((launcher.STATE / "player-logins.txt").exists())
+            self.assertTrue(all("--force" not in args for _, args, _ in calls))
+
+    def test_cleanup_refuses_replaced_identities(self):
+        with self.provisioning() as (accounts, calls):
+            launcher.provision_accounts("fearless_host", 3)
+            accounts["fearless_p1"] = entry("fearless_p1", 4000, 4000)
+            errors = launcher.cleanup_players(["fearless_p1"])
+            self.assertTrue(errors)
+            self.assertIn("identity changed", errors[0])
+            self.assertFalse(any(program == "userdel" for program, _, _ in calls))
+
+    def test_cleanup_failure_is_recorded_for_retry(self):
+        with self.provisioning() as (accounts, calls):
+            launcher.provision_accounts("fearless_host", 3)
+            original = launcher.command
+
+            def blocked(program, *args, input=None):
+                if program == "userdel":
+                    raise subprocess.CalledProcessError(8, [program])
+                return original(program, *args, input=input)
+
+            with patch.object(launcher, "command", side_effect=blocked):
+                self.assertTrue(launcher.cleanup_players(["fearless_p1"]))
+            record = json.loads((launcher.STATE / "accounts.json").read_text())["fearless_p1"]
+            self.assertTrue(record["deleting"])
+            self.assertEqual(launcher.cleanup_players(["fearless_p1"]), [])
+
+    def test_only_one_protected_game_can_own_player_accounts(self):
+        with self.provisioning():
+            with launcher.game_session([]):
+                with self.assertRaisesRegex(RuntimeError, "already running"):
+                    with launcher.game_session([]):
+                        self.fail("overlapping session was accepted")
+
+    def test_failed_startup_cleans_partially_provisioned_players(self):
+        with self.provisioning() as (accounts, calls):
+            original = launcher.command
+
+            def blocked(program, *args, input=None):
+                if program == "chpasswd" and input and input.startswith("fearless_p2:"):
+                    raise subprocess.CalledProcessError(1, [program])
+                return original(program, *args, input=input)
+
+            claimed = []
+            with self.assertRaises(subprocess.CalledProcessError):
+                with launcher.game_session(claimed), patch.object(launcher, "command", side_effect=blocked):
+                    launcher.provision_accounts("fearless_host", 3, cleanup=claimed)
+            self.assertEqual(set(accounts), {"fearless_host"})
 
     def test_account_aliases_and_shared_groups_are_rejected(self):
         for players in ([self.players[0]] * 3,

@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Privileged setup for a protected game on a dedicated systemd/cgroup-v2 VM."""
 import argparse
+from contextlib import contextmanager
 import ctypes
 import fcntl
 import grp
@@ -11,6 +12,7 @@ import pwd
 import re
 import secrets
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -62,7 +64,143 @@ def write_private(path, text):
         Path(temporary).unlink(missing_ok=True)
 
 
-def provision_accounts(server_name, count):
+def state_directory():
+    if not STATE.exists() and not STATE.is_symlink():
+        STATE.mkdir(mode=0o700)
+    info = STATE.lstat()
+    require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o077,
+            f"{STATE} must be a root-owned private directory")
+
+
+def read_registry():
+    registry = STATE / "accounts.json"
+    if not registry.exists() and not registry.is_symlink():
+        return {}
+    info = registry.lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o077,
+            "unsafe account registry")
+    records = json.loads(registry.read_text())
+    require(isinstance(records, dict), "invalid account registry")
+    return records
+
+
+def stop_unit(unit):
+    state = command("systemctl", "show", "--property=ActiveState", "--value", unit)
+    if state not in ("inactive", "failed", ""):
+        command("systemctl", "stop", unit)
+
+
+def cleanup_players(names):
+    """Delete only recorded player identities, never caller-supplied accounts."""
+    errors = []
+    with (STATE / ".accounts.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        records = read_registry()
+        for name in names:
+            record = records.get(name)
+            if not record or record.get("role") != "player":
+                continue
+            try:
+                entry = lookup(name)
+                home = HOMES / name
+                require(record["home"] == str(home), f"unexpected managed home for {name}")
+                if entry is not None:
+                    if "uid" in record:
+                        require((entry.pw_uid, entry.pw_gid, entry.pw_dir) == (record["uid"], record["gid"], record["home"]),
+                                f"account identity changed; refusing to delete {name}")
+                    else:
+                        require(entry.pw_gecos == record["tag"] and entry.pw_dir == record["home"],
+                                f"cannot verify interrupted account creation for {name}")
+                        record.update(uid=entry.pw_uid, gid=entry.pw_gid)
+                    require(entry.pw_uid != 0, "refusing to remove root")
+                    record["deleting"] = True
+                    write_private(STATE / "accounts.json", json.dumps(records, indent=2) + "\n")
+                    command("usermod", "--lock", "--expiredate", "1", "--shell", "/usr/sbin/nologin", "--", name)
+                    stop_unit(f"user-{entry.pw_uid}.slice")
+                    command("userdel", "--remove", "--", name)
+                    require(lookup(name) is None, f"account removal did not complete: {name}")
+                # A failed deletion remains journaled for a later retry. Never
+                # recursively remove an orphaned path whose ownership is unclear.
+                require(not home.exists() and not home.is_symlink(), f"managed home was not removed: {home}")
+                try:
+                    group = grp.getgrnam(name)
+                except KeyError:
+                    group = None
+                if group is not None:
+                    require(group.gr_gid == record.get("gid") and not group.gr_mem
+                            and not any(user.pw_gid == group.gr_gid for user in pwd.getpwall()),
+                            f"private group is in use or changed; refusing to delete {name}")
+                    command("groupdel", "--", name)
+                del records[name]
+                write_private(STATE / "accounts.json", json.dumps(records, indent=2) + "\n")
+                print(f"Removed temporary player account: {name}", flush=True)
+            except (RuntimeError, OSError, KeyError, subprocess.CalledProcessError) as exc:
+                errors.append(f"{name}: {exc}")
+        credentials = STATE / "player-logins.txt"
+        remaining = [(name, record) for name, record in records.items()
+                     if record.get("role") == "player" and record.get("ready") and not record.get("deleting")]
+        if remaining:
+            write_private(credentials, "# Initial player passwords.\n" + "".join(f"{name}: {record['password']}\n" for name, record in remaining))
+        else:
+            credentials.unlink(missing_ok=True)
+    return errors
+
+
+@contextmanager
+def game_session(player_names):
+    state_directory()
+    with (STATE / ".session.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("another protected game is already running") from None
+        session = {"signal": 0, "process": None, "unit": None, "socket": None, "server_uid": None}
+
+        def interrupted(signum, _frame):
+            session["signal"] = signum
+            process = session["process"]
+            if process is not None and process.poll() is None:
+                try:
+                    os.killpg(process.pid, signum)
+                except ProcessLookupError:
+                    pass
+
+        signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+        previous = {signum: signal.signal(signum, interrupted) for signum in signals}
+        try:
+            yield session
+        finally:
+            # Finish account database operations even if another Ctrl-C arrives.
+            for signum in signals:
+                signal.signal(signum, signal.SIG_IGN)
+            errors = []
+            try:
+                if session["unit"]:
+                    stop_unit(session["unit"])
+                process = session["process"]
+                if process is not None and process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                if session["socket"]:
+                    try:
+                        info = session["socket"].lstat()
+                        if stat.S_ISSOCK(info.st_mode) and info.st_uid == session["server_uid"]:
+                            session["socket"].unlink()
+                    except FileNotFoundError:
+                        pass
+                if player_names:
+                    errors = cleanup_players(player_names)
+            finally:
+                for signum, handler in previous.items():
+                    signal.signal(signum, handler)
+            require(not errors, "player cleanup incomplete: " + "; ".join(errors))
+
+
+def provision_accounts(server_name, count, cleanup=None):
     require(3 <= count <= 9, "create accounts for 3-9 players")
     require(re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", server_name), "invalid server account name")
     for program in ("useradd", "chpasswd"):
@@ -72,21 +210,11 @@ def provision_accounts(server_name, count):
     shadow = Path("/etc/shadow").stat()
     require(stat.S_ISREG(shadow.st_mode) and shadow.st_uid == 0 and not shadow.st_mode & 0o007,
             "account provisioning requires a protected /etc/shadow")
-    if not STATE.exists() and not STATE.is_symlink():
-        STATE.mkdir(mode=0o700)
-    info = STATE.lstat()
-    require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o077,
-            f"{STATE} must be a root-owned private directory")
+    state_directory()
     with (STATE / ".accounts.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         registry = STATE / "accounts.json"
-        records = {}
-        if registry.exists() or registry.is_symlink():
-            info = registry.lstat()
-            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o077,
-                    "unsafe account registry")
-            records = json.loads(registry.read_text())
-            require(isinstance(records, dict), "invalid account registry")
+        records = read_registry()
 
         def save():
             write_private(registry, json.dumps(records, indent=2) + "\n")
@@ -115,6 +243,8 @@ def provision_accounts(server_name, count):
                 home = HOMES / name
                 require(role != "player" or not (home.exists() or home.is_symlink()), f"home directory already exists: {home}")
         for name, role in names:
+            if role == "player" and cleanup is not None:
+                cleanup.append(name)
             if name not in records:
                 records[name] = {"role": role, "home": str(HOMES / name) if role == "player" else "/nonexistent",
                                  "tag": "Fearless Conspiracy " + secrets.token_hex(12),
@@ -349,47 +479,59 @@ def main():
     socket = args.socket.absolute()
     require(socket.parent == RUNTIME and socket.name not in {".", ".."}, f"the protected socket must be inside {RUNTIME}")
     require(not socket.exists() and not socket.is_symlink(), f"socket path already exists: {socket}")
-    if args.player:
-        server = account(args.server_user)
-        players = [account(name) for name in args.player]
-    else:
-        server, players = provision_accounts(args.server_user, args.players or 5)
-    validate_accounts(server, players)
-    validate_sessions(players)
-    if RUNTIME.exists() or RUNTIME.is_symlink():
-        info = RUNTIME.lstat()
-        require(stat.S_ISDIR(info.st_mode) and info.st_uid in (0, server.pw_uid), f"unsafe runtime directory: {RUNTIME}")
-    else:
-        RUNTIME.mkdir(mode=0o755)
-    os.chown(RUNTIME, server.pw_uid, server.pw_gid)
-    RUNTIME.chmod(0o755)
-    os.umask(0o077)
-    # A dedicated server account need not have access to the moderator's home
-    # directory. Stage the built executable without building/running it as root.
-    binary = stage_binary(binary, RUNTIME)
-    client = stage_binary(client, RUNTIME, "fearless-conspiracy-client")
-    print(f'Players: log in to your player account and run {client} {socket} "Your name"', flush=True)
-    print("Applying VM-wide /proc protection and runtime account limits; these remain until reboot.", flush=True)
-    restrict_proc()
-    slices = {entry.pw_uid: configure_slice(entry, SERVER_LIMITS if entry == server else PLAYER_LIMITS)
-              for entry in [server, *players]}
-    verify_visibility(server, players, slices)
-    # systemd places the process into the server's bounded slice before setpriv
-    # permanently drops credentials/capabilities and execs the game binary.
-    cmd = ["/usr/bin/systemd-run", "--quiet", "--scope", f"--unit=fearless-conspiracy-{os.getpid()}",
-           f"--slice=user-{server.pw_uid}.slice", *unprivileged(server, [entry.pw_gid for entry in players]),
-           str(binary), str(socket), "--players", str(len(players)), "--shared-local", "--setup",
-           "--protected-users", ",".join(str(entry.pw_uid) for entry in players), *game_args]
-    env = {**ENV, "HOME": server.pw_dir, "USER": server.pw_name, "LOGNAME": server.pw_name}
-    os.chdir("/")
-    os.execve(cmd[0], cmd, env)
+    temporary = [] if args.player else [f"fearless_p{number}" for number in range(1, (args.players or 5) + 1)]
+    claimed = []
+    with game_session(claimed) as session:
+        if args.player:
+            server = account(args.server_user)
+            players = [account(name) for name in args.player]
+        else:
+            for program in ("userdel", "usermod", "groupdel"):
+                command(program, "--help")
+            interrupted_cleanup = [name for name, record in read_registry().items() if name in temporary and record.get("deleting")]
+            require(not cleanup_players(interrupted_cleanup), "cannot finish an earlier player cleanup")
+            server, players = provision_accounts(args.server_user, args.players or 5, cleanup=claimed)
+        session.update(socket=socket, server_uid=server.pw_uid)
+        if session["signal"]:
+            return 128 + session["signal"]
+        validate_accounts(server, players)
+        validate_sessions(players)
+        if RUNTIME.exists() or RUNTIME.is_symlink():
+            info = RUNTIME.lstat()
+            require(stat.S_ISDIR(info.st_mode) and info.st_uid in (0, server.pw_uid), f"unsafe runtime directory: {RUNTIME}")
+        else:
+            RUNTIME.mkdir(mode=0o755)
+        os.chown(RUNTIME, server.pw_uid, server.pw_gid)
+        RUNTIME.chmod(0o755)
+        os.umask(0o077)
+        binary = stage_binary(binary, RUNTIME)
+        client = stage_binary(client, RUNTIME, "fearless-conspiracy-client")
+        print(f'Players: log in to your player account and run {client} {socket} "Your name"', flush=True)
+        print("Applying VM-wide /proc protection and runtime account limits; these remain until reboot.", flush=True)
+        restrict_proc()
+        slices = {entry.pw_uid: configure_slice(entry, SERVER_LIMITS if entry == server else PLAYER_LIMITS)
+                  for entry in [server, *players]}
+        verify_visibility(server, players, slices)
+        if session["signal"]:
+            return 128 + session["signal"]
+        session["unit"] = f"fearless-conspiracy-{os.getpid()}.scope"
+        cmd = ["/usr/bin/systemd-run", "--quiet", "--scope", f"--unit={session['unit']}",
+               f"--slice=user-{server.pw_uid}.slice", *unprivileged(server, [entry.pw_gid for entry in players]),
+               str(binary), str(socket), "--players", str(len(players)), "--shared-local", "--setup",
+               "--protected-users", ",".join(str(entry.pw_uid) for entry in players), *game_args]
+        env = {**ENV, "HOME": server.pw_dir, "USER": server.pw_name, "LOGNAME": server.pw_name}
+        session["process"] = subprocess.Popen(cmd, env=env, cwd="/", start_new_session=True)
+        if session["signal"]:
+            os.killpg(session["process"].pid, session["signal"])
+        result = session["process"].wait()
+        return 128 + session["signal"] if session["signal"] else (128 - result if result < 0 else result)
 
 
 if __name__ == "__main__":
     try:
-        main()
+        sys.exit(main())
     except (RuntimeError, OSError, KeyError, ValueError, subprocess.CalledProcessError) as exc:
-        print(f"Protected startup refused: {exc}", file=sys.stderr)
+        print(f"Protected game failed: {exc}", file=sys.stderr)
         if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
             print(exc.stderr.strip(), file=sys.stderr)
         sys.exit(1)

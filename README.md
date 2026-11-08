@@ -37,10 +37,11 @@ sudo ./server --protected --players 5
 Choose 3-9 players (default: 5). Startup creates `fearless_host` and
 `fearless_p1` through `fearless_pN` with private groups. Read initial player
 passwords using `sudo cat /var/lib/fearless-conspiracy/player-logins.txt` and
-share each player's entry privately. Accounts persist and are reused without
-resetting passwords; unrelated existing accounts are never modified. To use
+share each player's entry privately. When the server exits, its temporary player
+accounts, homes, login sessions and saved credentials are removed. The locked
+server account is retained. Only one protected game can run at a time. To use
 existing accounts, pass `--server-user ACCOUNT` and a `--player ACCOUNT` for
-each participant; these accounts need private primary groups and no sudo access.
+each participant; these accounts are kept and need private groups and no sudo access.
 
 Protected startup enables VM-wide `hidepid=2`, limits each player's user slice to
 25% of one CPU, 256 MiB
