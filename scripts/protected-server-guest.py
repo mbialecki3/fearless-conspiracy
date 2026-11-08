@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Destructive resource tests: only run in the marked, disposable QEMU VM."""
 import json
+import ctypes
 import os
 from pathlib import Path
 import re
@@ -70,6 +71,41 @@ def main():
     try:
         policy = subprocess.run([sys.executable, "/lab/scripts/test-protected-server.py"], capture_output=True, text=True)
         check("launcher policy tests", policy.returncode == 0, policy.stdout + policy.stderr)
+        check("VM starts without game accounts", "fearless_" not in Path("/etc/passwd").read_text())
+        bootstrap = launch([sys.executable, LAUNCHER, "--players", "9", "--", "--manual", "--scenario", "--preset", "full9"], "bootstrap")
+        for _ in range(4):
+            send(bootstrap, "")
+        socket = Path("/run/fearless-conspiracy/game.sock")
+        wait_for(lambda: socket.exists() or bootstrap.poll() is not None, "automatic account creation", timeout=90)
+        check("automatic startup creates accounts and starts game", socket.exists() and bootstrap.poll() is None, log("bootstrap"))
+        state = Path("/var/lib/fearless-conspiracy")
+        registry = json.loads((state / "accounts.json").read_text())
+        check("ten dedicated accounts created", len(registry) == 10 and {record["uid"] for record in registry.values()} == set(range(2000, 2010)))
+        check("created accounts have only their private groups", all(set(os.getgrouplist(name, record["gid"])) == {record["gid"]} for name, record in registry.items()))
+        check("credentials and registry are root-only", state.stat().st_mode & 0o777 == 0o700 and all((state / name).stat().st_uid == 0 and (state / name).stat().st_mode & 0o777 == 0o600 for name in ("accounts.json", "player-logins.txt")))
+        shadow = {line.split(":")[0]: line.split(":")[1] for line in Path("/etc/shadow").read_text().splitlines()}
+        check("server login is locked", shadow["fearless_host"].startswith("!") and registry["fearless_host"]["password"] is None)
+        crypt = ctypes.CDLL("libcrypt.so.1")
+        crypt.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+        crypt.crypt.restype = ctypes.c_char_p
+        for number in range(1, 10):
+            name = f"fearless_p{number}"
+            password = registry[name]["password"]
+            home = Path(registry[name]["home"]).stat()
+            check(f"{name} has a usable private login", crypt.crypt(password.encode(), shadow[name].encode()).decode() == shadow[name]
+                  and home.st_mode & 0o777 == 0o700 and home.st_uid == registry[name]["uid"] and home.st_gid == registry[name]["gid"])
+        check("players cannot read the login file", run_as(2001, 'from pathlib import Path; import sys; Path(sys.argv[1]).read_text()', state / "player-logins.txt").returncode != 0)
+        check("new accounts can execute staged client", run_as(2001, 'import os,sys; assert os.access(sys.argv[1], os.X_OK)', "/run/fearless-conspiracy/fearless-conspiracy-client").returncode == 0)
+        send(bootstrap, "shutdown")
+        bootstrap.wait(timeout=20)
+        check("bootstrap game shuts down normally", bootstrap.returncode == 0 and not socket.exists())
+        baseline_registry = (state / "accounts.json").read_bytes()
+        baseline_shadow = Path("/etc/shadow").read_bytes()
+        subprocess.run(["/usr/sbin/useradd", "--uid", "2010", "--user-group", "--no-create-home", "outsider"], check=True, capture_output=True)
+        # Existing-account mode must continue refusing unrelated accounts before
+        # changing restrictions. Automatic mode must not adopt them either.
+        collision = subprocess.run([sys.executable, LAUNCHER, "--server-user", "outsider", "--players", "3"], capture_output=True, text=True)
+        check("automatic provisioning refuses unrelated existing accounts", collision.returncode != 0 and "not managed" in collision.stderr)
         before_mount = Path("/proc/mounts").read_text()
         denied = subprocess.run([sys.executable, LAUNCHER, "--player", "fearless_p1", "--player", "fearless_p1", "--player", "fearless_p3"], capture_output=True, text=True)
         check("duplicate accounts rejected before remount", denied.returncode != 0 and "distinct Linux UIDs" in denied.stderr and Path("/proc/mounts").read_text() == before_mount)
@@ -90,9 +126,7 @@ def main():
             finally:
                 unmanaged.terminate()
                 unmanaged.wait()
-        args = [sys.executable, LAUNCHER]
-        for number in range(1, 10):
-            args += ["--player", f"fearless_p{number}"]
+        args = [sys.executable, LAUNCHER, "--players", "9"]
         args += ["--", "--manual", "--scenario", "--preset", "full9"]
         server = launch(args, "server")
         for _ in range(4):
@@ -100,6 +134,8 @@ def main():
         socket = Path("/run/fearless-conspiracy/game.sock")
         wait_for(lambda: socket.exists() or server.poll() is not None, "protected launch")
         check("protected launcher starts server", socket.exists() and server.poll() is None, log("server"))
+        check("restarting preserves managed accounts and passwords", (state / "accounts.json").read_bytes() == baseline_registry
+              and all(line in Path("/etc/shadow").read_bytes().splitlines() for line in baseline_shadow.splitlines()))
         pids = []
         for directory in Path("/proc").iterdir():
             if directory.name.isdigit():

@@ -123,11 +123,11 @@ def provision_accounts(server_name, count):
             record = records[name]
             entry = lookup(name)
             if entry is None:
-                command("useradd", "--user-group", "--no-log-init", "--password", "!",
+                command("useradd", "--user-group", "--groups", "", "--no-log-init", "--password", "!",
                         "--home-dir", record["home"], "--comment", record["tag"],
                         "--shell", "/bin/bash" if role == "player" else "/usr/sbin/nologin",
                         "--create-home" if role == "player" else "--no-create-home",
-                        "-K", "HOME_MODE=0700", "-K", "CREATE_MAIL_SPOOL=no", "--", name)
+                        "-K", "HOME_MODE=0700", "--", name)
                 entry = account(name)
             if "uid" not in record:
                 record.update(uid=entry.pw_uid, gid=entry.pw_gid)

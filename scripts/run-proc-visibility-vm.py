@@ -80,13 +80,25 @@ def main():
     (initroot / "etc/passwd").write_text("".join(f"{name}:x:{uid}:{uid}::/tmp:/bin/sh\n" for name, uid in accounts))
     (initroot / "etc/group").write_text("".join(f"{name}:x:{uid}:\n" for name, uid in accounts) + "proc_observers:x:2999:\n")
     if args.protected_launcher:
-        accounts = [("root", 0), ("fearless_host", 2000), *[(f"fearless_p{p}", 2000+p) for p in range(1, 10)], ("outsider", 2010)]
+        accounts = [("root", 0)]  # Protected startup must create the actual game accounts.
         (initroot / "etc/passwd").write_text("".join(f"{name}:x:{uid}:{uid}::/tmp:/bin/sh\n" for name, uid in accounts))
         (initroot / "etc/group").write_text("".join(f"{name}:x:{uid}:\n" for name, uid in accounts))
+        (initroot / "etc/shadow").write_text("root:!:0:0:99999:7:::\n")
+        (initroot / "etc/shadow").chmod(0o600)
+        (initroot / "etc/gshadow").write_text("root:!::\n")
+        (initroot / "etc/gshadow").chmod(0o600)
+        (initroot / "etc/login.defs").write_text("UID_MIN 2000\nUID_MAX 60000\nGID_MIN 2000\nGID_MAX 60000\nENCRYPT_METHOD SHA512\n")
+        for directory in ("var/lib", "home", "etc/skel"):
+            (initroot / directory).mkdir(parents=True, exist_ok=True)
+        (initroot / "etc/default").mkdir(exist_ok=True)
+        (initroot / "etc/default/useradd").write_text("CREATE_MAIL_SPOOL=no\n")
         (initroot / "etc/machine-id").write_text("12345678123456781234567812345678\n")
         copy_file("/etc/os-release")
         for name in ("systemctl", "systemd-run", "setpriv", "setfacl", "sleep", "true", "sudo"):
             binary = Path("/usr/bin") / name
+            copy_file(binary)
+            copy_libs(binary)
+        for binary in [Path("/usr/sbin") / name for name in ("useradd", "chpasswd", "nologin")] + [Path("/bin/bash")]:
             copy_file(binary)
             copy_libs(binary)
         for plugin in Path("/usr/libexec/sudo").glob("*.so*"):

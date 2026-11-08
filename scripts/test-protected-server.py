@@ -93,6 +93,26 @@ class ProtectedStartupTests(unittest.TestCase):
                 launcher.provision_accounts("fearless_host", 3)
             self.assertFalse(any(program == "chpasswd" and "--help" not in args for program, args, _ in calls[count:]))
 
+    def test_provisioning_recovers_an_interrupted_password_setup(self):
+        with self.provisioning() as (accounts, calls):
+            original = launcher.command
+            attempted = []
+
+            def interrupted(program, *args, input=None):
+                if program == "chpasswd" and input and input.startswith("fearless_p2:"):
+                    attempted.append(input)
+                    raise subprocess.CalledProcessError(1, [program])
+                return original(program, *args, input=input)
+
+            with patch.object(launcher, "command", side_effect=interrupted):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    launcher.provision_accounts("fearless_host", 3)
+            launcher.provision_accounts("fearless_host", 3)
+            registry = json.loads((launcher.STATE / "accounts.json").read_text())
+            self.assertTrue(all(record["ready"] for record in registry.values()))
+            self.assertEqual(attempted, [f"fearless_p2:{registry['fearless_p2']['password']}\n"])
+            self.assertEqual(sum(program == "useradd" and "--help" not in args for program, args, _ in calls), 4)
+
     def test_account_aliases_and_shared_groups_are_rejected(self):
         for players in ([self.players[0]] * 3,
                         [self.server, *self.players[:2]],
