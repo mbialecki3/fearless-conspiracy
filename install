@@ -39,7 +39,7 @@ fi
 
 printf 'Installing Ubuntu build dependencies...\n'
 "${package_command[@]}" update
-"${package_command[@]}" install --yes build-essential ca-certificates curl pkg-config python3 acl util-linux
+"${package_command[@]}" install --yes build-essential ca-certificates curl pkg-config python3 acl util-linux passwd
 
 cargo_home_path="${CARGO_HOME:-$HOME/.cargo}"
 export PATH="$cargo_home_path/bin:$PATH"

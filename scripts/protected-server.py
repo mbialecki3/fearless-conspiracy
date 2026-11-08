@@ -2,11 +2,14 @@
 """Privileged setup for a protected game on a dedicated systemd/cgroup-v2 VM."""
 import argparse
 import ctypes
+import fcntl
 import grp
+import json
 import os
 from pathlib import Path
 import pwd
 import re
+import secrets
 import shutil
 import stat
 import subprocess
@@ -16,6 +19,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 CGROUP = Path("/sys/fs/cgroup")
 RUNTIME = Path("/run/fearless-conspiracy")
+STATE = Path("/var/lib/fearless-conspiracy")
+HOMES = Path("/home")
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 PLAYER_LIMITS = {"CPUQuota": "25%", "MemoryHigh": "192M", "MemoryMax": "256M", "MemorySwapMax": "0", "TasksMax": "64"}
 SERVER_LIMITS = {"CPUQuota": "100%", "MemoryHigh": "384M", "MemoryMax": "512M", "MemorySwapMax": "0", "TasksMax": "128"}
@@ -27,13 +32,118 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def command(program, *args):
-    path = Path("/usr/bin") / program
+def command(program, *args, input=None):
+    path = next((directory / program for directory in (Path("/usr/bin"), Path("/usr/sbin"))
+                 if (directory / program).is_file()), None)
+    require(path is not None, f"install the required tool: {program}")
     info = path.stat()
     require(info.st_uid == 0 and not info.st_mode & 0o022,
             f"{path} must be root-owned and not writable by other accounts")
     return subprocess.run([str(path), *map(str, args)], check=True, capture_output=True,
-                          text=True, env=ENV, cwd="/").stdout.strip()
+                          text=True, env=ENV, cwd="/", input=input).stdout.strip()
+
+
+def lookup(name):
+    try:
+        return pwd.getpwnam(name)
+    except KeyError:
+        return None
+
+
+def write_private(path, text):
+    fd, temporary = tempfile.mkstemp(prefix=".accounts-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def provision_accounts(server_name, count):
+    require(3 <= count <= 9, "create accounts for 3-9 players")
+    require(re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", server_name), "invalid server account name")
+    for program in ("useradd", "chpasswd"):
+        command(program, "--help")
+    names = [(server_name, "server"), *[(f"fearless_p{number}", "player") for number in range(1, count + 1)]]
+    require(len({name for name, _ in names}) == len(names), "the server account cannot also be a player")
+    shadow = Path("/etc/shadow").stat()
+    require(stat.S_ISREG(shadow.st_mode) and shadow.st_uid == 0 and not shadow.st_mode & 0o007,
+            "account provisioning requires a protected /etc/shadow")
+    if not STATE.exists() and not STATE.is_symlink():
+        STATE.mkdir(mode=0o700)
+    info = STATE.lstat()
+    require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o077,
+            f"{STATE} must be a root-owned private directory")
+    with (STATE / ".accounts.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        registry = STATE / "accounts.json"
+        records = {}
+        if registry.exists() or registry.is_symlink():
+            info = registry.lstat()
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o077,
+                    "unsafe account registry")
+            records = json.loads(registry.read_text())
+            require(isinstance(records, dict), "invalid account registry")
+
+        def save():
+            write_private(registry, json.dumps(records, indent=2) + "\n")
+
+        # Check every collision before creating any accounts. Never adopt an
+        # unrelated account or change an existing user's password or groups.
+        for name, role in names:
+            existing, record = lookup(name), records.get(name)
+            if record:
+                require(record["role"] == role, f"managed account role changed: {name}")
+                if "uid" in record:
+                    require(existing is not None and (existing.pw_uid, existing.pw_gid, existing.pw_dir) ==
+                            (record["uid"], record["gid"], record["home"]), f"managed account identity changed: {name}")
+                elif existing:
+                    require(existing.pw_gecos == record["tag"] and existing.pw_dir == record["home"],
+                            f"cannot recover account creation for {name}")
+            else:
+                require(existing is None, f"{name} already exists and is not managed by protected startup; use --player for existing accounts")
+            if existing is None:
+                try:
+                    grp.getgrnam(name)
+                except KeyError:
+                    pass
+                else:
+                    raise RuntimeError(f"group {name} already exists; refusing to reuse it")
+                home = HOMES / name
+                require(role != "player" or not (home.exists() or home.is_symlink()), f"home directory already exists: {home}")
+        for name, role in names:
+            if name not in records:
+                records[name] = {"role": role, "home": str(HOMES / name) if role == "player" else "/nonexistent",
+                                 "tag": "Fearless Conspiracy " + secrets.token_hex(12),
+                                 "password": secrets.token_urlsafe(15) if role == "player" else None, "ready": False}
+                save()  # Journal creation before useradd so interruption is recoverable.
+            record = records[name]
+            entry = lookup(name)
+            if entry is None:
+                command("useradd", "--user-group", "--no-log-init", "--password", "!",
+                        "--home-dir", record["home"], "--comment", record["tag"],
+                        "--shell", "/bin/bash" if role == "player" else "/usr/sbin/nologin",
+                        "--create-home" if role == "player" else "--no-create-home",
+                        "-K", "HOME_MODE=0700", "-K", "CREATE_MAIL_SPOOL=no", "--", name)
+                entry = account(name)
+            if "uid" not in record:
+                record.update(uid=entry.pw_uid, gid=entry.pw_gid)
+                save()
+            if not record["ready"]:
+                if role == "player":
+                    command("chpasswd", "--crypt-method", "SHA512", "--sha-rounds", "100000",
+                            input=f"{name}:{record['password']}\n")
+                record["ready"] = True
+                save()
+                print(f"Created dedicated {role} account: {name}", flush=True)
+        credentials = STATE / "player-logins.txt"
+        write_private(credentials, "# Initial player passwords; existing passwords are never reset.\n" +
+                      "".join(f"{name}: {records[name]['password']}\n" for name, role in names if role == "player"))
+        print(f"Initial player logins: {credentials} (root-only; share each entry individually).", flush=True)
+        return account(server_name), [account(name) for name, role in names if role == "player"]
 
 
 def account(name):
@@ -174,7 +284,7 @@ def unprivileged(entry, extra_groups=()):
             "--no-new-privs", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all"]
 
 
-def stage_binary(source, directory):
+def stage_binary(source, directory, name="fearless-conspiracy-server"):
     """Copy data without executing it as root; replace without following links."""
     with source.open("rb") as incoming:
         require(incoming.read(4) == b"\x7fELF", "the prebuilt server must be a Linux ELF executable")
@@ -184,7 +294,7 @@ def stage_binary(source, directory):
             with os.fdopen(fd, "wb") as outgoing:
                 shutil.copyfileobj(incoming, outgoing)
                 os.fchmod(outgoing.fileno(), 0o555)
-            destination = directory / "fearless-conspiracy-server"
+            destination = directory / name
             os.replace(temporary, destination)
             return destination
         finally:
@@ -210,7 +320,9 @@ def verify_visibility(server, players, slices):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server-user", default="fearless_host")
-    parser.add_argument("--player", action="append", required=True, metavar="ACCOUNT")
+    participants = parser.add_mutually_exclusive_group()
+    participants.add_argument("--players", type=int, choices=range(3, 10), help="create dedicated accounts for this many players (default: 5)")
+    participants.add_argument("--player", action="append", metavar="ACCOUNT", help="use an existing account instead of automatic provisioning")
     parser.add_argument("--socket", type=Path, default=RUNTIME / "game.sock")
     parser.add_argument("game_args", nargs=argparse.REMAINDER, help="game options after --")
     args = parser.parse_args()
@@ -222,10 +334,6 @@ def main():
     for program in ("systemctl", "systemd-run", "setpriv", "setfacl"):
         info = (Path("/usr/bin") / program).stat()
         require(info.st_uid == 0 and not info.st_mode & 0o022, f"install a trusted /usr/bin/{program}")
-    server = account(args.server_user)
-    players = [account(name) for name in args.player]
-    validate_accounts(server, players)
-    validate_sessions(players)
     for fd in (1, 2):
         info = os.fstat(fd)
         require(not stat.S_ISREG(info.st_mode) or not info.st_mode & 0o077,
@@ -236,9 +344,18 @@ def main():
     binary = next((path for path in [ROOT / "bin/fearless-conspiracy-server",
                                     ROOT / "target/debug/fearless-conspiracy-server"] if path.is_file()), None)
     require(binary is not None, "build with cargo build --locked --bins before running sudo")
+    client = binary.with_name("fearless-conspiracy-client")
+    require(client.is_file(), "build both game binaries with cargo build --locked --bins before running sudo")
     socket = args.socket.absolute()
     require(socket.parent == RUNTIME and socket.name not in {".", ".."}, f"the protected socket must be inside {RUNTIME}")
     require(not socket.exists() and not socket.is_symlink(), f"socket path already exists: {socket}")
+    if args.player:
+        server = account(args.server_user)
+        players = [account(name) for name in args.player]
+    else:
+        server, players = provision_accounts(args.server_user, args.players or 5)
+    validate_accounts(server, players)
+    validate_sessions(players)
     if RUNTIME.exists() or RUNTIME.is_symlink():
         info = RUNTIME.lstat()
         require(stat.S_ISDIR(info.st_mode) and info.st_uid in (0, server.pw_uid), f"unsafe runtime directory: {RUNTIME}")
@@ -250,6 +367,8 @@ def main():
     # A dedicated server account need not have access to the moderator's home
     # directory. Stage the built executable without building/running it as root.
     binary = stage_binary(binary, RUNTIME)
+    client = stage_binary(client, RUNTIME, "fearless-conspiracy-client")
+    print(f'Players: log in to your player account and run {client} {socket} "Your name"', flush=True)
     print("Applying VM-wide /proc protection and runtime account limits; these remain until reboot.", flush=True)
     restrict_proc()
     slices = {entry.pw_uid: configure_slice(entry, SERVER_LIMITS if entry == server else PLAYER_LIMITS)
@@ -269,7 +388,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, OSError, KeyError, subprocess.CalledProcessError) as exc:
+    except (RuntimeError, OSError, KeyError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"Protected startup refused: {exc}", file=sys.stderr)
         if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
             print(exc.stderr.strip(), file=sys.stderr)

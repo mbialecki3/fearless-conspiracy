@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Policy tests that never change host mounts, accounts, or cgroups."""
 import importlib.util
+from contextlib import contextmanager
+import json
 from pathlib import Path
 import pwd
 import subprocess
@@ -22,6 +24,74 @@ class ProtectedStartupTests(unittest.TestCase):
     def setUp(self):
         self.server = entry("host", 2000, 2000)
         self.players = [entry(f"p{i}", 2000+i, 2000+i) for i in range(1, 4)]
+
+    @contextmanager
+    def provisioning(self):
+        accounts, calls = {}, []
+        original_lstat = Path.lstat
+
+        def root_owned(path):
+            info = original_lstat(path)
+            return SimpleNamespace(st_uid=0, st_mode=info.st_mode)
+
+        def find(name):
+            if name not in accounts:
+                raise KeyError(name)
+            return accounts[name]
+
+        def execute(program, *args, input=None):
+            calls.append((program, args, input))
+            if program == "useradd" and "--help" not in args:
+                name = args[-1]
+                uid = 2000 + len(accounts)
+                accounts[name] = pwd.struct_passwd((name, "x", uid, uid, args[args.index("--comment")+1],
+                                                    args[args.index("--home-dir")+1], args[args.index("--shell")+1]))
+            return ""
+
+        with tempfile.TemporaryDirectory() as temporary, patch.object(Path, "lstat", root_owned), \
+             patch.object(launcher, "STATE", Path(temporary) / "state"), \
+             patch.object(launcher, "HOMES", Path(temporary) / "home"), \
+             patch.object(launcher.pwd, "getpwnam", side_effect=find), \
+             patch.object(launcher.grp, "getgrnam", side_effect=KeyError), \
+             patch.object(launcher, "command", side_effect=execute), patch("builtins.print"):
+            yield accounts, calls
+
+    def test_provisioning_creates_private_accounts_and_keeps_passwords_on_reuse(self):
+        with self.provisioning() as (accounts, calls):
+            server, players = launcher.provision_accounts("fearless_host", 3)
+            self.assertEqual(server.pw_shell, "/usr/sbin/nologin")
+            self.assertEqual(len({p.pw_uid for p in [server, *players]}), 4)
+            registry = launcher.STATE / "accounts.json"
+            before = json.loads(registry.read_text())
+            passwords = [before[p.pw_name]["password"] for p in players]
+            self.assertEqual(len(set(passwords)), 3)
+            self.assertTrue(all(len(password) >= 20 for password in passwords))
+            self.assertEqual(registry.stat().st_mode & 0o777, 0o600)
+            self.assertEqual((launcher.STATE / "player-logins.txt").stat().st_mode & 0o777, 0o600)
+            launcher.provision_accounts("fearless_host", 3)
+            after = json.loads(registry.read_text())
+            self.assertEqual(before, after)
+            self.assertEqual(sum(program == "chpasswd" and "--help" not in args for program, args, _ in calls), 3)
+            self.assertTrue(all(password not in str(args) for _, args, _ in calls for password in passwords))
+            launcher.provision_accounts("fearless_host", 5)
+            self.assertEqual(len(accounts), 6)
+            self.assertEqual(before["fearless_p1"], json.loads(registry.read_text())["fearless_p1"])
+
+    def test_provisioning_refuses_to_adopt_an_unrelated_account(self):
+        with self.provisioning() as (accounts, calls):
+            accounts["fearless_p3"] = entry("fearless_p3", 3000, 3000)
+            with self.assertRaisesRegex(RuntimeError, "not managed"):
+                launcher.provision_accounts("fearless_host", 3)
+            self.assertFalse(any(program == "useradd" and "--help" not in args for program, args, _ in calls))
+
+    def test_provisioning_rejects_replaced_account_identities(self):
+        with self.provisioning() as (accounts, calls):
+            launcher.provision_accounts("fearless_host", 3)
+            accounts["fearless_p1"] = entry("fearless_p1", 4000, 4000)
+            count = len(calls)
+            with self.assertRaisesRegex(RuntimeError, "identity changed"):
+                launcher.provision_accounts("fearless_host", 3)
+            self.assertFalse(any(program == "chpasswd" and "--help" not in args for program, args, _ in calls[count:]))
 
     def test_account_aliases_and_shared_groups_are_rejected(self):
         for players in ([self.players[0]] * 3,
