@@ -6,6 +6,7 @@ import grp
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import stat
 import subprocess
@@ -18,7 +19,7 @@ RUNTIME = Path("/run/fearless-conspiracy")
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 PLAYER_LIMITS = {"CPUQuota": "25%", "MemoryHigh": "192M", "MemoryMax": "256M", "MemorySwapMax": "0", "TasksMax": "64"}
 SERVER_LIMITS = {"CPUQuota": "100%", "MemoryHigh": "384M", "MemoryMax": "512M", "MemorySwapMax": "0", "TasksMax": "128"}
-ADMIN_GROUPS = {"root", "sudo", "wheel", "admin", "docker", "lxd", "incus-admin", "disk"}
+ADMIN_GROUPS = {"root", "sudo", "wheel", "admin", "docker", "lxd", "incus-admin", "disk", "adm", "systemd-journal", "shadow"}
 
 
 def require(condition, message):
@@ -45,6 +46,16 @@ def groups(entry):
     return set(os.getgrouplist(entry.pw_name, entry.pw_gid))
 
 
+def sudo_denies(result, name):
+    # sudo-rs returns 0 for an empty privilege listing; traditional sudo may
+    # return 1. Require an explicit denial without errors, not an exit code.
+    denial = rf"User {re.escape(name)} is not allowed to run sudo on [^\r\n]+\."
+    stdout, stderr = result.stdout.strip(), result.stderr.strip()
+    return result.returncode in (0, 1) and bool(
+        (re.fullmatch(denial, stdout) and not stderr)
+        or (re.fullmatch(denial, stderr) and not stdout))
+
+
 def validate_accounts(server, players):
     require(3 <= len(players) <= 9, "register 3-9 player accounts with --player")
     accounts = [server, *players]
@@ -59,8 +70,8 @@ def validate_accounts(server, players):
         if Path("/usr/bin/sudo").exists():
             result = subprocess.run(["/usr/bin/sudo", "-n", "-l", "-U", player.pw_name],
                                     capture_output=True, text=True, env=ENV, cwd="/")
-            require(result.returncode == 1 and "not allowed to run sudo" in result.stdout + result.stderr,
-                    f"{player.pw_name} must have no sudo permissions (or its policy could not be verified)")
+            require(sudo_denies(result, player.pw_name),
+                    f"{player.pw_name} must have no sudo permissions; policy check: {(result.stdout + result.stderr).strip()}")
 
 
 def proc_status(pid):
@@ -88,6 +99,10 @@ def validate_sessions(players):
             uid = next(iter(identities))
             process_groups = set(map(int, (fields["Gid"] + " " + fields["Groups"]).split()))
             require(process_groups <= memberships[uid], f"player process {directory.name} has unexpected group privileges; log it out first")
+            prefix = f"0::/user.slice/user-{uid}.slice"
+            require(any(line == prefix or line.startswith(prefix + "/")
+                        for line in (directory / "cgroup").read_text().splitlines()),
+                    f"player process {directory.name} is outside its systemd user slice; log it out and log in normally")
             require(os.stat(directory / "ns/mnt").st_ino == namespace,
                     f"player process {directory.name} uses a different /proc view; log it out first")
         except FileNotFoundError:
@@ -219,7 +234,6 @@ def main():
     require(not any(value in {"--allow-same-uid", "--protected-users"} for value in game_args),
             "protected startup controls the account restrictions")
     binary = next((path for path in [ROOT / "bin/fearless-conspiracy-server",
-                                    ROOT / "target/release/fearless-conspiracy-server",
                                     ROOT / "target/debug/fearless-conspiracy-server"] if path.is_file()), None)
     require(binary is not None, "build with cargo build --locked --bins before running sudo")
     socket = args.socket.absolute()

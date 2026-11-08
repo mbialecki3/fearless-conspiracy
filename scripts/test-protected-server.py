@@ -30,6 +30,19 @@ class ProtectedStartupTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 launcher.validate_accounts(self.server, players)
 
+    def test_sudo_variants_must_explicitly_deny_privileges(self):
+        denial = "User p1 is not allowed to run sudo on localhost.\n"
+        for code in (0, 1):
+            result = subprocess.CompletedProcess([], code, denial, "")
+            self.assertTrue(launcher.sudo_denies(result, "p1"))
+        for result in [
+            subprocess.CompletedProcess([], 0, "User p1 may run the following commands:\n(root) ALL", ""),
+            subprocess.CompletedProcess([], 1, "", "policy plugin failed"),
+            subprocess.CompletedProcess([], 0, denial, "sudoers syntax error"),
+            subprocess.CompletedProcess([], 0, denial.replace("p1", "p2"), ""),
+        ]:
+            self.assertFalse(launcher.sudo_denies(result, "p1"))
+
     def test_membership_in_another_players_private_group_is_rejected(self):
         with patch.object(launcher, "groups", return_value={2001, 2002}):
             with self.assertRaisesRegex(RuntimeError, "another game account"):
