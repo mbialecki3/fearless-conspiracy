@@ -8,6 +8,31 @@ the Jester tries to get voted out.
 
 **The communications library is contained in one file: [`src/comm.rs`](src/comm.rs).**
 
+## Prebuilt Linux release
+
+Download the Linux x86-64 archive and checksum from
+[GitHub Releases](https://github.com/mbialecki3/fearless-conspiracy/releases).
+The archive includes statically linked server, client, and IPC demo binaries,
+the launch scripts, and the protected-startup helper. Rust and compilation are
+not required for this package.
+
+For protected play, use a dedicated Ubuntu VM running systemd with cgroup v2.
+Install the supporting system packages, extract the archive, and start the server:
+
+```bash
+sudo apt-get update
+sudo apt-get install --yes python3 acl util-linux passwd sudo
+sha256sum -c fearless-conspiracy-0.2.0-linux-x86_64.tar.gz.sha256
+tar -xzf fearless-conspiracy-0.2.0-linux-x86_64.tar.gz
+cd fearless-conspiracy-0.2.0-linux-x86_64
+sudo ./server --players 5
+```
+
+Use the player accounts and staged client printed by the launcher, as described
+under Run. For same-account testing, use `./server --unprotected` and run
+`./client "Alice" --plain` in another terminal. The `./install` instructions
+below apply to source checkouts; the prebuilt archive already contains binaries.
+
 ## Setup and build
 
 Use Linux (or Ubuntu under WSL), with everyone on the same machine.
@@ -235,83 +260,3 @@ its setup and test files, and the PDFs as described below.
 | `docs/screenshots/` | Six images used by the report. |
 | `docs/evidence/` | Curated VM measurements, run records, and gameplay transcripts. |
 | `submission/` | Report draft, poster, Canvas post, and presentation notes. |
-
-Tests live alongside the Rust code. Run them with `cargo test --locked`.
-
-## Isolation verification and report materials
-
-The new mechanism is Linux isolation; the Unix-domain socket primitive remains
-from Project 1. `scripts/protected-server.py` implements privileged setup,
-account provisioning and cleanup, procfs restrictions, systemd/cgroup v2
-limits, prior-setting restoration, and interrupted-session recovery. `src/comm.rs` remains the complete single-file communications library
-and checks the registered UID and resource-limited client PID at admission.
-
-Run `bash scripts/check.sh` for formatting, policy tests, Clippy, Rust tests,
-and a release build. Run `bash scripts/smoke-game.sh` for a same-account test.
-For real separate-account tests, use the disposable VM runner (QEMU, a readable
-Linux x86-64 kernel, static BusyBox, Python 3.12+, cpio, systemd, sudo, account
-management tools, and ACL utilities are required on its Linux build host):
-
-```bash
-python3 scripts/run-proc-visibility-vm.py \
-  --qemu /path/to/qemu-system-x86_64 --qemu-share /path/to/qemu-data \
-  --kernel /path/to/vmlinuz --bios /path/to/bios.bin
-python3 scripts/run-proc-visibility-vm.py \
-  --qemu /path/to/qemu-system-x86_64 --qemu-share /path/to/qemu-data \
-  --kernel /path/to/vmlinuz --bios /path/to/bios.bin --protected-launcher
-```
-
-The BIOS option is optional for a system-installed QEMU. These VMs do not
-remount host procfs or create host accounts. The protected guest tests CPU,
-task and memory limits, admission, private delivery, a complete nine-player
-match, account cleanup, interrupts, and failed startup. It checks the memory
-soft limit first, then temporarily disables that soft limit inside the VM
-while testing the unchanged hard cap, and restores it afterward.
-
-Verification on November 12, 2026 (America/Phoenix): 80 Rust tests, 26 launcher
-policy tests, 13 server-wrapper tests, 22 process-visibility VM checks, and 104 protected-game VM checks
-passed. The code checks and five-client smoke game also passed. In the source
-workspace, evidence is under `docs/evidence/`; in a submission archive it is
-under `evidence/`. The VM records include binary/script hashes and confirm
-that the host procfs mount stayed unchanged. These results cover the measured
-channel and workloads, not every possible side channel or crash.
-
-Additional files: `scripts/protected-server-guest.py` contains VM-only resource,
-full-match, restoration, and lifecycle checks; `scripts/proc-visibility-guest.py` contains the
-VM-only metadata experiment; `scripts/run-proc-visibility-vm.py` constructs and
-runs either VM; `scripts/test-protected-server.py` runs non-destructive policy
-tests; `scripts/test-server-launcher.py` checks default and explicit mode routing
-without changing host accounts, mounts, or limits. `scripts/package-submission.sh` packages the current sources and exactly
-two PDFs, without requiring an unrelated worktree change to be committed.
-
-## Submission materials
-
-The current report and poster PDFs, ready-to-copy Canvas post, and poster talking
-notes are in `submission/`. The report's editable source is `docs/REPORT.md`.
-Actual feedback received from classmates and feedback given to them still need
-to be added to the report before final submission.
-
-From a source checkout, rebuild the PDFs with
-`python3 scripts/build-project-report.py` using a Python
-environment with ReportLab and Pillow installed. The builder uses the Liberation
-and DejaVu fonts available on Ubuntu and writes both PDFs to `submission/`.
-The saved screenshots are already included. The optional screenshot helper
-creates browser transcript views from the saved evidence; its HTML output and
-absolute-path manifest are generated files.
-
-Package the reviewed PDFs and current game source with:
-
-```bash
-mkdir -p output
-bash scripts/package-submission.sh \
-  submission/Fearless-Conspiracy-Report-Draft.pdf \
-  submission/Fearless-Conspiracy-Poster.pdf \
-  output/Mitchell-Bialecki-Improved-Game-DRAFT.tgz
-```
-
-The packaging script includes exactly two PDFs, the game source, README, test
-harnesses, evidence, and a SHA-256 manifest. Inside the archive, the PDFs and
-`evidence/` are at the package root. Canvas text, poster notes, editable writing
-sources, build trees, and credentials are excluded. Generated archives stay in
-ignored `output/`. Review the two peer-feedback paragraphs before naming an
-archive as the final submission.

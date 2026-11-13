@@ -33,13 +33,21 @@ def main():
     parser.add_argument("--bios", type=Path, help="SeaBIOS path when using locally extracted QEMU packages")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--protected-launcher", action="store_true", help="test protected startup with real systemd and cgroup v2")
+    parser.add_argument("--binary-dir", type=Path, help="test prebuilt server/client binaries instead of building the debug binaries")
     args = parser.parse_args()
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = (args.output or ROOT / "target/proc-vm" / stamp).resolve()
     out.mkdir(parents=True, exist_ok=False)
     initroot = out / "initroot"
     initroot.mkdir()
-    subprocess.run(["cargo", "build", "--locked", "--bins"], cwd=ROOT, check=True)
+    if args.binary_dir:
+        binary_dir = args.binary_dir.resolve()
+        for name in ("fearless-conspiracy-server", "fearless-conspiracy-client"):
+            if not (binary_dir / name).is_file():
+                raise SystemExit(f"Missing prebuilt binary: {binary_dir / name}")
+    else:
+        subprocess.run(["cargo", "build", "--locked", "--bins"], cwd=ROOT, check=True)
+        binary_dir = ROOT / "target/debug"
 
     def copy_file(source, target=None):
         source = Path(source)
@@ -70,7 +78,7 @@ def main():
     for extension in (stdlib / "lib-dynload").glob("*.so"):
         copy_libs(extension)
     for name in ("fearless-conspiracy-server", "fearless-conspiracy-client"):
-        binary = ROOT / "target/debug" / name
+        binary = binary_dir / name
         copy_file(binary, "/lab/" + name)
         copy_libs(binary)
     guest = "protected-server-guest.py" if args.protected_launcher else "proc-visibility-guest.py"
@@ -125,7 +133,7 @@ def main():
             copy_file(ROOT / "scripts" / name, "/lab/scripts/" + name)
         copy_file(ROOT / "server", "/lab/server")
         for name in ("fearless-conspiracy-server", "fearless-conspiracy-client"):
-            copy_file(ROOT / "target/debug" / name, "/lab/bin/" + name)
+            copy_file(binary_dir / name, "/lab/bin/" + name)
         (initroot / "etc/systemd/system").mkdir(parents=True)
         (initroot / "etc/systemd/system.conf").write_text("[Manager]\nLogLevel=warning\nShowStatus=no\n")
         (initroot / "etc/systemd/system/fc-test.target").write_text("[Unit]\nDefaultDependencies=no\nWants=fc-test.service\n")

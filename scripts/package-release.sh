@@ -13,6 +13,12 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 version="$1"
+manifest_version="$(cargo metadata --locked --no-deps --format-version 1 \
+  | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "fearless-conspiracy"))')"
+if [[ "$version" != "$manifest_version" ]]; then
+  printf 'Requested version %s does not match Cargo version %s.\n' "$version" "$manifest_version" >&2
+  exit 1
+fi
 release_target=x86_64-unknown-linux-musl
 package_name="fearless-conspiracy-$version-linux-x86_64"
 output_dir="$project_root/target/releases"
