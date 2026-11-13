@@ -1,0 +1,24 @@
+{
+  "discussion_ready_to_copy": true,
+  "discussion_posted": false,
+  "report_pages": 6,
+  "captioned_figures": 6,
+  "poster_pages": 1,
+  "poster_inches": [
+    24,
+    18
+  ],
+  "poster_measured_active_recipients": [
+    2,
+    6,
+    8
+  ],
+  "rubric_reviewed_twice": true,
+  "report_visual_review": "all six latest pages inspected",
+  "poster_visual_review": "inspected; latest PNG identical to inspected render",
+  "feedback_received": "pending real Canvas replies",
+  "feedback_given": "pending actual review details",
+  "tested_guest_scripts_match_source": true,
+  "protected_vm_checks": 104,
+  "process_visibility_checks": 22
+}

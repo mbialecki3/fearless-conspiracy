@@ -1,0 +1,3 @@
+*.pdf binary
+*.png binary
+docs/evidence/**/*.log -text -whitespace

@@ -70,16 +70,33 @@ def main():
         process.stdin.write(command + "\n")
         process.stdin.flush()
 
+    spec = importlib.util.spec_from_file_location("protected_launcher", LAUNCHER)
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+
+    def environment_state():
+        return {"proc": helper.proc_mount(), "overrides": {
+            str(path): {"link": os.readlink(path)} if path.is_symlink() else
+            {"data": path.read_bytes().hex(), "mode": path.stat().st_mode & 0o777}
+            for path in helper.OVERRIDES.glob("user-*.slice.d/*.conf")}}
+
+    def restored(label, before):
+        after = environment_state()
+        check(label, after == before and not (helper.STATE / "isolation.json").exists(),
+              {"before": before, "after": after})
+
     try:
         policy = subprocess.run([sys.executable, "/lab/scripts/test-protected-server.py"], capture_output=True, text=True)
         check("launcher policy tests", policy.returncode == 0, policy.stdout + policy.stderr)
         check("VM starts without game accounts", "fearless_" not in Path("/etc/passwd").read_text())
-        bootstrap = launch([sys.executable, LAUNCHER, "--players", "9", "--", "--manual", "--scenario", "--preset", "full9"], "bootstrap")
+        bootstrap_before = environment_state()
+        bootstrap = launch(["/bin/bash", "/lab/server", "--players", "9", "--", "--manual", "--scenario", "--preset", "full9"], "bootstrap")
         for _ in range(4):
             send(bootstrap, "")
         socket = Path("/run/fearless-conspiracy/game.sock")
         wait_for(lambda: socket.exists() or bootstrap.poll() is not None, "automatic account creation", timeout=90)
         check("automatic startup creates accounts and starts game", socket.exists() and bootstrap.poll() is None, log("bootstrap"))
+        check("default server wrapper uses protected startup", "Verified player isolation:" in log("bootstrap"))
         state = Path("/var/lib/fearless-conspiracy")
         registry = json.loads((state / "accounts.json").read_text())
         check("ten dedicated accounts created", len(registry) == 10 and {record["uid"] for record in registry.values()} == set(range(2000, 2010)))
@@ -109,9 +126,7 @@ def main():
 
         check("normal shutdown removes player accounts homes and groups", players_removed(9))
         check("normal shutdown removes saved player credentials", set(json.loads((state / "accounts.json").read_text())) == {"fearless_host"} and not (state / "player-logins.txt").exists())
-        spec = importlib.util.spec_from_file_location("protected_launcher", LAUNCHER)
-        helper = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(helper)
+        restored("bootstrap restores proc and removes only game limit overrides", bootstrap_before)
         helper.provision_accounts("fearless_host", 9)  # Fixtures for legacy-account refusal checks.
         baseline_registry = (state / "accounts.json").read_bytes()
         baseline_shadow = Path("/etc/shadow").read_bytes()
@@ -141,8 +156,9 @@ def main():
             finally:
                 unmanaged.terminate()
                 unmanaged.wait()
-        args = [sys.executable, LAUNCHER, "--players", "9"]
+        args = ["/bin/bash", "/lab/server", "--players", "9"]
         args += ["--", "--manual", "--scenario", "--preset", "full9"]
+        game_before = environment_state()
         server = launch(args, "server")
         for _ in range(4):
             send(server, "")
@@ -208,6 +224,23 @@ def main():
         send(clients[mafia[0]], "/mafia protected-night-probe")
         wait_for(lambda: all("protected-night-probe" in log(f"player{number}") for number in mafia), "private mafia delivery")
         check("private night delivery works without leaking to Town", "protected-night-probe" not in log(f"player{town}"))
+        # Capture a complete match on distinct accounts for the new report.
+        # Each command waits for its actual reply rather than assuming delivery.
+        def command(number, text, reply):
+            offset = len(log(f"player{number}"))
+            send(clients[number], text)
+            wait_for(lambda: reply in log(f"player{number}")[offset:], text)
+
+        def advance(marker):
+            offsets = {n: len(log(f"player{n}")) for n in clients}
+            send(server, "advance")
+            wait_for(lambda: all(marker in log(f"player{n}")[offsets[n]:] for n in clients), marker)
+
+        command(1, "/investigate 7", "Night choice set to #7")
+        command(2, "/heal 1", "Night choice set to #1")
+        command(3, "/watch 1", "Night choice set to #1")
+        command(6, "/kill 1", "Night choice set to #1")
+        command(8, "/will set I claimed Town, but I was the Framer.", "Will replaced.")
         root = CGROUP / "user-2001.slice"
         start = values(root / "cpu.stat")
         cpu = launch([sys.executable, "-I", "-c", 'import time; end=time.monotonic()+3;\nwhile time.monotonic()<end: pass'], "cpu-stress", 2001)
@@ -251,8 +284,41 @@ finally:
         end = values(root / "memory.events")
         check("memory exhaustion is contained to the player slice", memory.returncode != 0 and int(end["oom_kill"]) > int(start["oom_kill"]), {"before": start, "after": end, "exit": memory.returncode})
         check("game survives the resource tests", server.poll() is None and all(process.poll() is None for process in clients.values()))
-        send(clients[town], "/players")
-        time.sleep(0.5)
+        advance("Nobody died during the night.")
+        check("night actions still resolve after resource pressure", "#7 appears suspicious" in log("player1")
+              and "Your protected target #1 was attacked" in log("player2")
+              and "visitors to #1: #2, #7" in log("player3"))
+
+        living = set(range(1, 10))
+
+        def trial(accused, final=False):
+            advance("Discussion has begun.")
+            command(1, "/say My investigation found player 7 suspicious.", "My investigation found")
+            advance("Nominations are open.")
+            for voter in sorted(living - {accused})[:len(living)//2+1]:
+                command(voter, f"/vote {accused}", f"nominated #{accused}")
+            wait_for(lambda: f"#{accused} is on trial" in log("player1"), "trial begins")
+            command(accused, "/say I claim to be Town.", "I claim to be Town.")
+            advance("Judgment voting is open")
+            for voter in sorted(living - {accused}):
+                command(voter, "/guilty", "Judgment choice set to guilty.")
+            advance("Verdict: Convicted.")
+            command(accused, "/say These are my last words.", "These are my last words.")
+            advance("Final faction result: Town" if final else "The public execution is complete.")
+            living.remove(accused)
+            check(f"trial and execution of player {accused}", f"#{accused} Player{accused} was publicly executed" in log("player1"))
+
+        trial(8)
+        command(6, "/kill 4", "Night choice set to #4")
+        advance("#4 Player4 died.")
+        living.remove(4)
+        check("night death is broadcast", all("#4 Player4 died." in log(f"player{n}") for n in clients))
+        trial(6)
+        advance("Nobody died during the night.")
+        trial(7, final=True)
+        command(4, "/say Good game from the dead player.", "Good game from the dead player.")
+        check("protected match reaches Town victory and postgame", all("Final faction result: Town" in log(f"player{n}")
+              and "Good game from the dead player." in log(f"player{n}") for n in clients))
         leftover = launch(["/usr/bin/sleep", "infinity"], "leftover-session", 2001)
         sleeper_pids = root / "fc-test-leftover-session.scope/cgroup.procs"
         wait_for(lambda: sleeper_pids.exists() and any(re.search(r"^Uid:\s+2001\s", Path(f"/proc/{pid}/status").read_text(), re.M)
@@ -265,11 +331,34 @@ finally:
         check("cleanup terminates remaining player sessions", leftover.poll() is not None)
         check("live-player shutdown removes accounts homes and groups", players_removed(9))
         check("unrelated account survives cleanup", "outsider:" in Path("/etc/passwd").read_text())
-        check("proc protection remains after shutdown", "hidepid=invisible" in Path("/proc/mounts").read_text())
+        restored("live-player shutdown restores original proc and resource configuration", game_before)
 
         # Existing-account mode must leave both identities and home data alone.
         helper.provision_accounts("fearless_host", 3)
         run_as(2001, 'from pathlib import Path; Path("/home/fearless_p1/keep-me").write_text("player notes")').check_returncode()
+        # Check preservation of nondefault proc options, administrator limits,
+        # an unrelated override, an active slice, and cgroup permissions.
+        helper.remount_proc(helper.proc_mount(), "hidepid=1,gid=2999", "cannot set test baseline")
+        helper.command("systemctl", "set-property", "--runtime", "user-2001.slice", "CPUQuota=60%", "MemoryHigh=300M",
+                       "MemoryMax=400M", "MemorySwapMax=64M", "TasksMax=90", "CPUWeight=42")
+        helper.command("systemctl", "start", "user-2001.slice")
+        original_slice = CGROUP / "user-2001.slice"
+        # kernfs may support only the basic ACL represented by mode bits.
+        acl_probe = subprocess.run(["/usr/bin/setfacl", "--set=u::rwx,g::r-x,g:2999:r-x,m::r-x,o::--x", str(original_slice)],
+                                   capture_output=True, text=True)
+        evidence["extended_cgroup_acl_supported"] = acl_probe.returncode == 0
+        if acl_probe.returncode != 0:
+            helper.command("setfacl", "--set=u::rwx,g::r-x,o::--x", original_slice)
+        original_slice.chmod(0o2751)
+        (original_slice / "cgroup.max.descendants").write_text("77")
+        baseline_holder = launch(["/usr/bin/sleep", "infinity"], "baseline-holder", 2001)
+        wait_for(lambda: (original_slice / "fc-test-baseline-holder.scope").exists(), "baseline login session")
+        baseline_acl = helper.command("getfacl", "--omit-header", "--numeric", original_slice)
+        baseline_gid = original_slice.stat().st_gid
+        baseline_mode = original_slice.stat().st_mode & 0o7777
+        baseline_limits = {name: (original_slice / name).read_text() for name in
+                           ("cpu.max", "memory.high", "memory.max", "memory.swap.max", "pids.max", "cgroup.max.descendants")}
+        manual_before = environment_state()
         manual_args = [sys.executable, LAUNCHER]
         for number in range(1, 4):
             manual_args += ["--player", f"fearless_p{number}"]
@@ -285,8 +374,17 @@ finally:
         send(manual, "shutdown")
         manual.wait(timeout=20)
         check("existing-account mode preserves accounts and home data", manual.returncode == 0 and Path("/etc/passwd").read_bytes() == before_users and Path("/home/fearless_p1/keep-me").read_text() == "player notes")
+        restored("existing-account shutdown preserves nondefault proc and administrator overrides", manual_before)
+        check("active slice limits ownership ACL and existing session are restored",
+              baseline_holder.poll() is None and original_slice.stat().st_gid == baseline_gid
+              and original_slice.stat().st_mode & 0o7777 == baseline_mode
+              and helper.command("getfacl", "--omit-header", "--numeric", original_slice) == baseline_acl
+              and all((original_slice / name).read_text() == value for name, value in baseline_limits.items()))
+        helper.command("systemctl", "stop", "fc-test-baseline-holder.scope")
+        baseline_holder.wait(timeout=20)
 
-        for signum, label in ((signal.SIGTERM, "terminate"), (signal.SIGINT, "interrupt")):
+        for signum, label in ((signal.SIGTERM, "terminate"), (signal.SIGINT, "interrupt"), (signal.SIGHUP, "hangup")):
+            signal_before = environment_state()
             interrupted = launch([sys.executable, LAUNCHER, "--players", "3", "--", "--manual", "--scenario", "--preset", "demo3"], label)
             for _ in range(4):
                 send(interrupted, "")
@@ -295,10 +393,42 @@ finally:
             interrupted.send_signal(signum)
             interrupted.wait(timeout=30)
             check(label + " cleans accounts homes groups credentials and socket", interrupted.returncode == 128 + signum and players_removed(3) and not socket.exists() and not (state / "player-logins.txt").exists(), {"exit": interrupted.returncode, "log": log(label)[-700:]})
+            restored(label + " restores prior isolation settings", signal_before)
+        failed_before = environment_state()
         failed = launch([sys.executable, LAUNCHER, "--players", "3", "--", "--not-a-game-option"], "failed-game")
         failed.wait(timeout=60)
         check("failed game startup cleans provisioned players", failed.returncode != 0 and players_removed(3) and not socket.exists()
               and not (state / "player-logins.txt").exists(), {"exit": failed.returncode, "log": log("failed-game")[-700:]})
+        restored("failed game startup restores prior isolation settings", failed_before)
+
+        target = OUT / "unrelated-config"
+        target.write_text("[Slice]\nMemoryMax=400M\n")
+        dropins = helper.OVERRIDES / "user-2002.slice.d"
+        dropins.mkdir(mode=0o755, parents=True, exist_ok=True)
+        unsafe = dropins / "50-MemoryMax.conf"
+        unsafe.symlink_to(target)
+        partial_before = environment_state()
+        partial = launch([sys.executable, LAUNCHER, "--players", "3"], "partial-setup")
+        partial.wait(timeout=60)
+        check("mid-setup failure safely removes temporary players", partial.returncode != 0 and players_removed(3)
+              and "unsafe runtime override" in log("partial-setup") and target.read_text() == "[Slice]\nMemoryMax=400M\n")
+        restored("mid-setup failure restores earlier changed slices and proc", partial_before)
+        unsafe.unlink()
+        dropins.rmdir()
+
+        killed_before = environment_state()
+        killed = launch([sys.executable, LAUNCHER, "--players", "3", "--", "--manual", "--scenario", "--preset", "demo3"], "killed-launcher")
+        for _ in range(4):
+            send(killed, "")
+        wait_for(lambda: socket.exists() or killed.poll() is not None, "forced-termination startup", timeout=90)
+        check("forced-termination game starts normally", socket.exists() and killed.poll() is None)
+        killed.kill()
+        killed.wait(timeout=20)
+        check("SIGKILL retains a root-only recovery record", (state / "isolation.json").stat().st_mode & 0o777 == 0o600)
+        recovery = subprocess.run(["/bin/bash", "/lab/server", "--restore"], capture_output=True, text=True, timeout=45)
+        check("explicit recovery stops orphaned game and removes managed accounts", recovery.returncode == 0
+              and players_removed(3) and not socket.exists(), recovery.stdout + recovery.stderr)
+        restored("SIGKILL recovery restores original settings", killed_before)
         evidence["pass"] = True
     except BaseException:
         evidence["error"] = traceback.format_exc()

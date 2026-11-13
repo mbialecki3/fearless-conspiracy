@@ -1,0 +1,27 @@
+{
+  "report_pages": 6,
+  "poster_pages": 1,
+  "poster_inches": [
+    24,
+    18
+  ],
+  "captioned_figures": 6,
+  "pdf_count_in_archive": 2,
+  "no_word_documents": true,
+  "no_nested_old_archive": true,
+  "packaged_sources_match_workspace": true,
+  "packaged_pdfs_match_final_rendered_files": true,
+  "archive_manifest_verified": true,
+  "archived_cargo_check_passed": true,
+  "feedback_received": "pending - user will collect after Canvas post",
+  "feedback_given": "pending - actual review details required",
+  "visual_review": "six latest report pages and revised poster inspected",
+  "protected_by_default": true,
+  "wrapper_tests_passed": 13,
+  "protected_vm_checks_passed": 104,
+  "launcher_policy_tests_passed": 26,
+  "restores_prior_settings": true,
+  "sigkill_recovery_verified": true,
+  "discussion_ready_to_copy": true,
+  "technical_scope": "finished default protection, setting restoration, and interrupted-session recovery"
+}

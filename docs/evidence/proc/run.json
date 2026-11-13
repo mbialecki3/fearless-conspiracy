@@ -1,0 +1,52 @@
+{
+  "command": [
+    "/home/mitch/Desktop/Project1_CSE536/output/proc-vm-tools/root/usr/bin/qemu-system-x86_64",
+    "-L",
+    "/home/mitch/Desktop/Project1_CSE536/output/proc-vm-tools/root/usr/share/qemu",
+    "-machine",
+    "q35",
+    "-accel",
+    "tcg",
+    "-cpu",
+    "max",
+    "-smp",
+    "2",
+    "-m",
+    "1536",
+    "-nodefaults",
+    "-display",
+    "none",
+    "-serial",
+    "stdio",
+    "-monitor",
+    "none",
+    "-nic",
+    "none",
+    "-no-reboot",
+    "-smbios",
+    "type=1,product=FC proc visibility disposable VM",
+    "-kernel",
+    "/home/mitch/Desktop/Project1_CSE536/output/proc-vm-tools/kernel/boot/vmlinuz-7.0.0-42-generic",
+    "-initrd",
+    "/home/mitch/Desktop/Project1_CSE536/target/proc-vm/20261113T002920Z/initramfs.cpio.gz",
+    "-append",
+    "console=ttyS0 rdinit=/init panic=-1 random.trust_cpu=on",
+    "-bios",
+    "/home/mitch/Desktop/Project1_CSE536/output/proc-vm-tools/root/usr/share/seabios/bios-256k.bin"
+  ],
+  "host_kernel": "7.0.0-42-generic",
+  "kernel_sha256": "8656aabb7fa660c59d77dd01f9d63d7a8ee2e15a1126211ce889fa6a6db64429",
+  "binary_sha256": {
+    "fearless-conspiracy-server": "bfb394444c3585836d5fc54187842580b5d3052ba09ff1cad4fa35e5f6018241",
+    "fearless-conspiracy-client": "da9131f247d5cf70396eefefa45390ba05b94d0c68f4d6dd2c11bc8b474fadf5",
+    "guest.py": "dcfe59747bc6d8c896754764a59970d99756794459832b55ce678f362bbbf86b"
+  },
+  "qemu_version": "QEMU emulator version 10.2.1 (Debian 1:10.2.1+ds-1ubuntu3.3)",
+  "host_proc_before": [
+    "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0"
+  ],
+  "qemu_exit_code": 0,
+  "host_proc_after": [
+    "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0"
+  ]
+}

@@ -1,0 +1,106 @@
+Initial player logins: /var/lib/fearless-conspiracy/player-logins.txt (root-only; share each entry individually).
+Players: log in to your player account and run /run/fearless-conspiracy/fearless-conspiracy-client /run/fearless-conspiracy/game.sock "Your name"
+Applying temporary /proc protection and runtime account limits; prior settings are restored on exit.
+Verified player isolation: {"uid": 2001, "proc_hidden": true, "other_cgroups_hidden": true}
+Verified player isolation: {"uid": 2002, "proc_hidden": true, "other_cgroups_hidden": true}
+Verified player isolation: {"uid": 2003, "proc_hidden": true, "other_cgroups_hidden": true}
+Verified player isolation: {"uid": 2004, "proc_hidden": true, "other_cgroups_hidden": true}
+Verified player isolation: {"uid": 2005, "proc_hidden": true, "other_cgroups_hidden": true}
+Verified player isolation: {"uid": 2006, "proc_hidden": true, "other_cgroups_hidden": true}
+Verified player isolation: {"uid": 2007, "proc_hidden": true, "other_cgroups_hidden": true}
+Verified player isolation: {"uid": 2008, "proc_hidden": true, "other_cgroups_hidden": true}
+Verified player isolation: {"uid": 2009, "proc_hidden": true, "other_cgroups_hidden": true}
+Fearless Conspiracy lobby setup
+Press Enter to accept a default; Ctrl+C to cancel.
+
+How many players do you want? (3-9) [9]: Do you want manual phase control? (use advance; disables timers) [yes]: Do you want predictable roles? (assigned in player ID order) [yes]: Allow players from other local Linux accounts to connect? [yes]: 
+Roles: #1 Sheriff, #2 Doctor, #3 Lookout, #4 Escort, #5 Jailor, #6 Godfather, #7 Mafioso, #8 Framer, #9 Jester
+Starting a 9-player lobby.
+
+Fearless Conspiracy Full 9 listening on /run/fearless-conspiracy/game.sock; waiting for 9 players
+Match settings: Full 9; SCENARIO: predetermined roles; MANUAL: host advances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).
+Players: run ./client NAME in separate terminals and enter /ready. All 9 players must be connected and ready to start.
+Host commands: help, status, advance (manual mode), abort, shutdown.
+#1 Player1 joined the lobby.
+#2 Player2 joined the lobby.
+#3 Player3 joined the lobby.
+#4 Player4 joined the lobby.
+#5 Player5 joined the lobby.
+#6 Player6 joined the lobby.
+#7 Player7 joined the lobby.
+#8 Player8 joined the lobby.
+#9 Player9 joined the lobby.
+Ready update: #1 Player1 is READY (1/9 connected ready).
+Ready update: #2 Player2 is READY (2/9 connected ready).
+Ready update: #3 Player3 is READY (3/9 connected ready).
+Ready update: #4 Player4 is READY (4/9 connected ready).
+Ready update: #5 Player5 is READY (5/9 connected ready).
+Ready update: #6 Player6 is READY (6/9 connected ready).
+Ready update: #7 Player7 is READY (7/9 connected ready).
+Ready update: #8 Player8 is READY (8/9 connected ready).
+Ready update: #9 Player9 is READY (9/9 connected ready).
+Game started. Player roles:
+  #1 Player1: Sheriff
+  #2 Player2: Doctor
+  #3 Player3: Lookout
+  #4 Player4: Escort
+  #5 Player5: Jailor
+  #6 Player6: Godfather
+  #7 Player7: Mafioso
+  #8 Player8: Framer
+  #9 Player9: Jester
+Current scene: Role Reveal (Day 1)
+Scene: Role Reveal (Day 1) -> Day 1 Introductions (Day 1)
+Scene: Day 1 Introductions (Day 1) -> Night (Day 1)
+[CHAT:MAFIA] #6: protected-night-probe
+Scene: Night (Day 1) -> Dawn (Day 2)
+Scene: Dawn (Day 2) -> Discussion (Day 2)
+[CHAT:PUBLIC] #1 Player1: My investigation found player 7 suspicious.
+Scene: Discussion (Day 2) -> Nominations (Day 2)
+Nomination: #1 Player1 voted for #8 Player8 (1/5 needed for trial).
+Nomination: #2 Player2 voted for #8 Player8 (2/5 needed for trial).
+Nomination: #3 Player3 voted for #8 Player8 (3/5 needed for trial).
+Nomination: #4 Player4 voted for #8 Player8 (4/5 needed for trial).
+Nomination: #5 Player5 voted for #8 Player8 (5/5 needed for trial).
+[CHAT:PUBLIC] #8 Player8: I claim to be Town.
+Scene: Defense (Day 2) -> Judgment (Day 2)
+Scene: Judgment (Day 2) -> Last Words (Day 2)
+[CHAT:PUBLIC] #8 Player8: These are my last words.
+Scene: Last Words (Day 2) -> Night (Day 2)
+Scene: Night (Day 2) -> Dawn (Day 3)
+Scene: Dawn (Day 3) -> Discussion (Day 3)
+[CHAT:PUBLIC] #1 Player1: My investigation found player 7 suspicious.
+Scene: Discussion (Day 3) -> Nominations (Day 3)
+Nomination: #1 Player1 voted for #6 Player6 (1/4 needed for trial).
+Nomination: #2 Player2 voted for #6 Player6 (2/4 needed for trial).
+Nomination: #3 Player3 voted for #6 Player6 (3/4 needed for trial).
+Nomination: #5 Player5 voted for #6 Player6 (4/4 needed for trial).
+[CHAT:PUBLIC] #6 Player6: I claim to be Town.
+Scene: Defense (Day 3) -> Judgment (Day 3)
+Scene: Judgment (Day 3) -> Last Words (Day 3)
+[CHAT:PUBLIC] #6 Player6: These are my last words.
+Scene: Last Words (Day 3) -> Night (Day 3)
+Scene: Night (Day 3) -> Dawn (Day 4)
+Scene: Dawn (Day 4) -> Discussion (Day 4)
+[CHAT:PUBLIC] #1 Player1: My investigation found player 7 suspicious.
+Scene: Discussion (Day 4) -> Nominations (Day 4)
+Nomination: #1 Player1 voted for #7 Player7 (1/4 needed for trial).
+Nomination: #2 Player2 voted for #7 Player7 (2/4 needed for trial).
+Nomination: #3 Player3 voted for #7 Player7 (3/4 needed for trial).
+Nomination: #5 Player5 voted for #7 Player7 (4/4 needed for trial).
+[CHAT:PUBLIC] #7 Player7: I claim to be Town.
+Scene: Defense (Day 4) -> Judgment (Day 4)
+Scene: Judgment (Day 4) -> Last Words (Day 4)
+[CHAT:PUBLIC] #7 Player7: These are my last words.
+Scene: Last Words (Day 4) -> Game Ended
+[CHAT:POSTGAME] #4 Player4: Good game from the dead player.
+Removed temporary player account: fearless_p1
+Removed temporary player account: fearless_p2
+Removed temporary player account: fearless_p3
+Removed temporary player account: fearless_p4
+Removed temporary player account: fearless_p5
+Removed temporary player account: fearless_p6
+Removed temporary player account: fearless_p7
+Removed temporary player account: fearless_p8
+Removed temporary player account: fearless_p9
+Restored previous /proc settings, resource limits, and cgroup permissions.

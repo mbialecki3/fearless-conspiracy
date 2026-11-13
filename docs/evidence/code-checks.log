@@ -1,0 +1,129 @@
+..........................
+----------------------------------------------------------------------
+Ran 26 tests in 0.063s
+
+OK
+.............
+----------------------------------------------------------------------
+Ran 13 tests in 0.314s
+
+OK
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (target/debug/deps/fearless_conspiracy-dd2774bba78f839a)
+
+running 76 tests
+test comm::tests::active_socket_is_never_replaced ... ok
+test comm::tests::cgroup_membership_requires_a_pid_inside_the_registered_tree ... ok
+test comm::tests::frame_round_trip_survives_split_header_and_body_reads ... ok
+test comm::tests::eof_mid_frame_is_reported ... ok
+test comm::tests::configured_socket_mode_is_applied ... ok
+test comm::tests::multiple_frames_can_arrive_in_one_stream_read ... ok
+test comm::tests::invalid_json_is_rejected ... ok
+test comm::tests::ordinary_existing_file_is_never_removed ... ok
+test comm::tests::oversized_length_is_rejected_before_body_read ... ok
+test comm::tests::graceful_shutdown_writes_all_queued_frames_before_closing ... ok
+test comm::tests::real_unix_stream_pair_exchanges_a_framed_request_and_response ... ok
+test comm::tests::protected_connections_reject_unregistered_accounts_before_handshake ... ok
+test comm::tests::stale_owned_socket_is_replaced_automatically ... ok
+test command::tests::every_role_guide_explains_its_objective_and_commands ... ok
+test command::tests::parser_never_treats_unknown_slash_command_as_chat ... ok
+test command::tests::parser_routes_ready_and_rejects_stale_phase ... ok
+test command::tests::postgame_allows_reads_and_shared_chat_but_freezes_mutations_and_results ... ok
+test game::tests::abort_is_terminal_and_awards_no_new_wins ... ok
+test game::tests::all_presets_have_unique_roles_and_expected_sizes ... ok
+test game::tests::final_results_separate_faction_and_personal_outcomes ... ok
+test game::tests::fixed_scenario_assigns_roles_by_stable_player_id ... ok
+test game::tests::jail_chat_omits_jailor_identity_and_jailed_mafia_can_only_listen ... ok
+test game::tests::jester_public_execution_earns_win_and_defers_faction_result_for_haunt ... ok
+test game::tests::mafia_chat_recipients_exclude_town_and_jester ... ok
+test game::tests::mafia_numeric_superiority_does_not_end_match_early ... ok
+test game::tests::mafia_roster_is_never_sent_to_town_or_jester ... ok
+test game::tests::names_are_unique_case_insensitively_and_reject_terminal_controls ... ok
+test game::tests::night_guidance_is_private_and_role_specific ... ok
+test game::tests::nomination_majority_trial_and_private_judgment_reach_execution ... ok
+test game::tests::phase_ids_reject_late_commands_and_day_one_has_no_nominations ... ok
+test game::tests::same_uid_cannot_claim_two_lobby_players ... ok
+test game::tests::scenarios_still_reject_too_few_players_and_invalid_role_sets ... ok
+test game::tests::small_lobbies_require_every_player_and_assign_the_complete_lineup ... ok
+test game::tests::tied_judgment_acquits_and_clears_nominations ... ok
+test game::tests::voting_phases_explain_available_commands_privately ... ok
+test game::tests::whisper_payload_is_only_addressed_to_participants ... ok
+test game::tests::will_and_death_note_limits_and_role_permissions_are_enforced ... ok
+test rate_limit::tests::chat_detection_covers_bare_and_explicit_channels ... ok
+test rate_limit::tests::duplicate_and_old_request_ids_are_rejected ... ok
+test rate_limit::tests::repeated_limit_violations_request_disconnect ... ok
+test rate_limit::tests::sixth_chat_in_five_seconds_is_rejected ... ok
+test roles::tests::blocked_jailor_spends_no_charge_and_prisoner_cannot_act ... ok
+test roles::tests::blocking_godfather_uses_mafioso_fallback_and_blocking_mafioso_uses_godfather ... ok
+test roles::tests::executing_town_removes_all_remaining_jailor_executions ... ok
+test roles::tests::framer_promotes_when_both_killing_roles_die_in_same_batch ... ok
+test roles::tests::frozen_intentions_resolve_identically_regardless_of_submission_order ... ok
+test roles::tests::haunt_bypasses_doctor_protection_and_preserves_jester_win ... ok
+test roles::tests::lookout_caps_report_at_three_without_leaking_roles ... ok
+test roles::tests::mafioso_promotes_after_godfather_death_but_sheriff_uses_old_role ... ok
+test roles::tests::ordinary_jailor_death_does_not_cancel_established_execution ... ok
+test roles::tests::protected_attack_fails_but_lookout_evidence_survives ... ok
+test roles::tests::same_night_frame_is_reported_and_consumed_by_successful_sheriff_check ... ok
+test roles::tests::self_heal_is_spent_when_it_activates_without_an_attack ... ok
+test roles::tests::stored_frame_survives_until_a_successful_later_investigation ... ok
+test roles::tests::unprotected_mafia_attack_freezes_will_and_publishes_death_note ... ok
+test server::tests::accused_forfeit_resumes_remaining_time_without_skipping_nominations ... ok
+test server::tests::acquittals_share_one_nomination_budget_and_next_day_resets_it ... ok
+test server::tests::duration_options_validate_and_override_fast_independent_of_order ... ok
+test server::tests::exhausted_nomination_budget_is_not_replenished_by_a_trial ... ok
+test server::tests::manual_mode_never_expires_but_majority_nominations_still_trigger_trials ... ok
+test server::tests::player_counts_select_presets_and_reject_unsupported_sizes ... ok
+test server::tests::protected_accounts_are_distinct_and_cannot_allow_same_uid ... ok
+test server::tests::setup_aborts_on_eof_instead_of_starting_with_partial_answers ... ok
+test comm::tests::client_disconnect_is_reported_on_reserved_lifecycle_channel ... ok
+test server::tests::setup_accepts_small_counts_and_named_presets_as_defaults ... ok
+test server::tests::setup_can_change_flags_and_select_automatic_timer_speed ... ok
+test server::tests::setup_defaults_preserve_flags_and_duration_overrides ... ok
+test server::tests::setup_retries_invalid_answers_and_leaves_host_commands_unread ... ok
+test server::tests::shared_local_is_explicit_and_announced ... ok
+test server::tests::small_matches_can_resolve_night_actions_and_execute_mafia ... ok
+test comm::tests::duplicate_linux_uid_is_rejected ... ok
+test comm::tests::nonreading_peer_eventually_fills_only_its_bounded_queue ... ok
+test comm::tests::malformed_peer_disconnect_does_not_stop_healthy_peer ... ok
+test comm::tests::incompatible_protocol_version_gets_clear_error_before_join ... ok
+test comm::tests::graceful_shutdown_bounds_nonreader_wait_without_losing_healthy_output ... ok
+test comm::tests::server_transport_routes_private_group_and_broadcast_messages ... ok
+
+test result: ok. 76 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running unittests src/bin/fearless-conspiracy-client.rs (target/debug/deps/fearless_conspiracy_client-05e793fbbc36d450)
+
+running 2 tests
+test tests::routine_success_replies_are_silent ... ok
+test tests::useful_confirmations_and_errors_are_visible ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/fearless-conspiracy-server.rs (target/debug/deps/fearless_conspiracy_server-fa8b3efad1bc1efa)
+
+running 2 tests
+test tests::public_chat_is_silent_while_ready_and_direct_chat_are_confirmed ... ok
+test tests::nomination_logs_identify_voters_targets_changes_and_withdrawals ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/ipc-demo-client.rs (target/debug/deps/ipc_demo_client-f9a85e3d75db695f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/ipc-demo-server.rs (target/debug/deps/ipc_demo_server-885cb0def18f3fdb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests fearless_conspiracy
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Finished `release` profile [optimized] target(s) in 0.02s

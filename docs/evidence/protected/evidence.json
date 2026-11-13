@@ -1,0 +1,1295 @@
+{
+  "kernel": "7.0.0-42-generic",
+  "measurements": [
+    {
+      "label": "launcher policy tests",
+      "pass": true,
+      "details": "..........................\n----------------------------------------------------------------------\nRan 26 tests in 0.836s\n\nOK\n"
+    },
+    {
+      "label": "VM starts without game accounts",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "automatic startup creates accounts and starts game",
+      "pass": true,
+      "details": "Created dedicated server account: fearless_host\nCreated dedicated player account: fearless_p1\nCreated dedicated player account: fearless_p2\nCreated dedicated player account: fearless_p3\nCreated dedicated player account: fearless_p4\nCreated dedicated player account: fearless_p5\nCreated dedicated player account: fearless_p6\nCreated dedicated player account: fearless_p7\nCreated dedicated player account: fearless_p8\nCreated dedicated player account: fearless_p9\nInitial player logins: /var/lib/fearless-conspiracy/player-logins.txt (root-only; share each entry individually).\nPlayers: log in to your player account and run /run/fearless-conspiracy/fearless-conspiracy-client /run/fearless-conspiracy/game.sock \"Your name\"\nApplying temporary /proc protection and runtime account limits; prior settings are restored on exit.\nVerified player isolation: {\"uid\": 2001, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2002, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2003, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2004, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2005, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2006, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2007, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2008, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2009, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nFearless Conspiracy lobby setup\nPress Enter to accept a default; Ctrl+C to cancel.\n\nHow many players do you want? (3-9) [9]: Do you want manual phase control? (use advance; disables timers) [yes]: Do you want predictable roles? (assigned in player ID order) [yes]: Allow players from other local Linux accounts to connect? [yes]: \nRoles: #1 Sheriff, #2 Doctor, #3 Lookout, #4 Escort, #5 Jailor, #6 Godfather, #7 Mafioso, #8 Framer, #9 Jester\nStarting a 9-player lobby.\n\nFearless Conspiracy Full 9 listening on /run/fearless-conspiracy/game.sock; waiting for 9 players\nMatch settings: Full 9; SCENARIO: predetermined roles; MANUAL: host advances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).\nPlayers: run ./client NAME in separate terminals and enter /ready. All 9 players must be connected and ready to start.\nHost commands: help, status, advance (manual mode), abort, shutdown.\n"
+    },
+    {
+      "label": "default server wrapper uses protected startup",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "ten dedicated accounts created",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "created accounts have only their private groups",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "credentials and registry are root-only",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "server login is locked",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p1 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p2 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p3 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p4 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p5 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p6 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p7 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p8 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "fearless_p9 has a usable private login",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "players cannot read the login file",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "new accounts can execute staged client",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "bootstrap game shuts down normally",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "normal shutdown removes player accounts homes and groups",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "normal shutdown removes saved player credentials",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "bootstrap restores proc and removes only game limit overrides",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=0,gid=0"
+          },
+          "overrides": {}
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=0,gid=0"
+          },
+          "overrides": {}
+        }
+      }
+    },
+    {
+      "label": "automatic provisioning refuses unrelated existing accounts",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "duplicate accounts rejected before remount",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "sudo policy can be checked",
+      "pass": true,
+      "details": {
+        "exit": 0,
+        "stdout": "User fearless_p1 is not allowed to run sudo on localhost.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "label": "custom sudo privileges rejected before remount",
+      "pass": true,
+      "details": "Protected game failed: fearless_p1 must have no sudo permissions; policy check: User fearless_p1 may run the following commands on localhost:\n    (root) NOPASSWD: /usr/bin/true\n"
+    },
+    {
+      "label": "existing unlimited player processes rejected before remount",
+      "pass": true,
+      "details": "Protected game failed: player process 519 is outside its systemd user slice; log it out and log in normally\n"
+    },
+    {
+      "label": "protected launcher starts server",
+      "pass": true,
+      "details": "Initial player logins: /var/lib/fearless-conspiracy/player-logins.txt (root-only; share each entry individually).\nPlayers: log in to your player account and run /run/fearless-conspiracy/fearless-conspiracy-client /run/fearless-conspiracy/game.sock \"Your name\"\nApplying temporary /proc protection and runtime account limits; prior settings are restored on exit.\nVerified player isolation: {\"uid\": 2001, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2002, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2003, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2004, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2005, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2006, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2007, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2008, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2009, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nFearless Conspiracy lobby setup\nPress Enter to accept a default; Ctrl+C to cancel.\n\nHow many players do you want? (3-9) [9]: Do you want manual phase control? (use advance; disables timers) [yes]: Do you want predictable roles? (assigned in player ID order) [yes]: Allow players from other local Linux accounts to connect? [yes]: \nRoles: #1 Sheriff, #2 Doctor, #3 Lookout, #4 Escort, #5 Jailor, #6 Godfather, #7 Mafioso, #8 Framer, #9 Jester\nStarting a 9-player lobby.\n\nFearless Conspiracy Full 9 listening on /run/fearless-conspiracy/game.sock; waiting for 9 players\nMatch settings: Full 9; SCENARIO: predetermined roles; MANUAL: host advances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).\nPlayers: run ./client NAME in separate terminals and enter /ready. All 9 players must be connected and ready to start.\nHost commands: help, status, advance (manual mode), abort, shutdown.\n"
+    },
+    {
+      "label": "restarting preserves managed accounts and passwords",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "one unprivileged game server",
+      "pass": true,
+      "details": [
+        605
+      ]
+    },
+    {
+      "label": "game has no root credentials or capabilities",
+      "pass": true,
+      "details": {
+        "Name": "\tfearless-conspi",
+        "Umask": "\t0077",
+        "State": "\tS (sleeping)",
+        "Tgid": "\t605",
+        "Ngid": "\t0",
+        "Pid": "\t605",
+        "PPid": "\t525",
+        "TracerPid": "\t0",
+        "Uid": "\t2000\t2000\t2000\t2000",
+        "Gid": "\t2000\t2000\t2000\t2000",
+        "FDSize": "\t64",
+        "Groups": "\t2000 2001 2002 2003 2004 2005 2006 2007 2008 2009 ",
+        "NStgid": "\t605",
+        "NSpid": "\t605",
+        "NSpgid": "\t605",
+        "NSsid": "\t605",
+        "Kthread": "\t0",
+        "VmPeak": "\t  206328 kB",
+        "VmSize": "\t  140804 kB",
+        "VmLck": "\t       0 kB",
+        "VmPin": "\t       0 kB",
+        "VmHWM": "\t    4108 kB",
+        "VmRSS": "\t    4108 kB",
+        "RssAnon": "\t     316 kB",
+        "RssFile": "\t       8 kB",
+        "RssShmem": "\t    3784 kB",
+        "VmData": "\t    4632 kB",
+        "VmStk": "\t     132 kB",
+        "VmExe": "\t    1968 kB",
+        "VmLib": "\t    1972 kB",
+        "VmPTE": "\t      64 kB",
+        "VmSwap": "\t       0 kB",
+        "HugetlbPages": "\t       0 kB",
+        "CoreDumping": "\t0",
+        "THP_enabled": "\t1",
+        "untag_mask": "\t0xffffffffffffffff",
+        "Threads": "\t3",
+        "SigQ": "\t0/3194",
+        "SigPnd": "\t0000000000000000",
+        "ShdPnd": "\t0000000000000000",
+        "SigBlk": "\t0000000000000000",
+        "SigIgn": "\t0000000000001000",
+        "SigCgt": "\t0000000100000440",
+        "CapInh": "\t0000000000000000",
+        "CapPrm": "\t0000000000000000",
+        "CapEff": "\t0000000000000000",
+        "CapBnd": "\t0000000000000000",
+        "CapAmb": "\t0000000000000000",
+        "NoNewPrivs": "\t1",
+        "Seccomp": "\t0",
+        "Seccomp_filters": "\t0",
+        "Speculation_Store_Bypass": "\tvulnerable",
+        "SpeculationIndirectBranch": "\talways enabled",
+        "Cpus_allowed": "\t3",
+        "Cpus_allowed_list": "\t0-1",
+        "Mems_allowed": "\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001",
+        "Mems_allowed_list": "\t0",
+        "voluntary_ctxt_switches": "\t15",
+        "nonvoluntary_ctxt_switches": "\t5",
+        "x86_Thread_features": "\t",
+        "x86_Thread_features_locked": "\t"
+      }
+    },
+    {
+      "label": "global proc restriction active",
+      "pass": true,
+      "details": [
+        "proc /proc proc rw,relatime,hidepid=invisible 0 0"
+      ]
+    },
+    {
+      "label": "kernel limits for UID 2000",
+      "pass": true,
+      "details": {
+        "cpu.max": "100000 100000",
+        "memory.high": "402653184",
+        "memory.max": "536870912",
+        "memory.swap.max": "0",
+        "pids.max": "128"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2001",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2002",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2003",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2004",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2005",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2006",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2007",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2008",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "kernel limits for UID 2009",
+      "pass": true,
+      "details": {
+        "cpu.max": "25000 100000",
+        "memory.high": "201326592",
+        "memory.max": "268435456",
+        "memory.swap.max": "0",
+        "pids.max": "64"
+      }
+    },
+    {
+      "label": "UID 2001 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2002 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2003 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2004 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2005 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2006 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2007 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2008 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2009 cannot inspect or remove limits",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "unregistered account rejected",
+      "pass": true,
+      "details": "b'\\x00\\x00\\x00O{\"type\":\"error\",\"text\":\"this account is not registered for the protected game\"}'\n"
+    },
+    {
+      "label": "registered account outside its limited slice rejected",
+      "pass": true,
+      "details": "b'\\x00\\x00\\x00S{\"type\":\"error\",\"text\":\"start the client from your resource-limited login session\"}'\n"
+    },
+    {
+      "label": "server account cannot join",
+      "pass": true,
+      "details": "b'\\x00\\x00\\x00O{\"type\":\"error\",\"text\":\"this account is not registered for the protected game\"}'\n"
+    },
+    {
+      "label": "UID 2001 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2002 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2003 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2004 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2005 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2006 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2007 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2008 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "UID 2009 remains isolated after new sessions start",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "private night delivery works without leaking to Town",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "CPU load is throttled",
+      "pass": true,
+      "details": {
+        "before": {
+          "usage_usec": "143405",
+          "user_usec": "81544",
+          "system_usec": "61861",
+          "nice_usec": "0",
+          "core_sched.force_idle_usec": "0",
+          "nr_periods": "59",
+          "nr_throttled": "3",
+          "throttled_usec": "149114",
+          "nr_bursts": "0",
+          "burst_usec": "0"
+        },
+        "after": {
+          "usage_usec": "1055598",
+          "user_usec": "950772",
+          "system_usec": "104826",
+          "nice_usec": "0",
+          "core_sched.force_idle_usec": "0",
+          "nr_periods": "95",
+          "nr_throttled": "39",
+          "throttled_usec": "2851183",
+          "nr_bursts": "0",
+          "burst_usec": "0"
+        }
+      }
+    },
+    {
+      "label": "process creation stops at the task limit",
+      "pass": true,
+      "details": "{\"fork_blocked\": true, \"children\": 59}\n"
+    },
+    {
+      "label": "memory pressure activates the soft throttle",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "memory exhaustion is contained to the player slice",
+      "pass": true,
+      "details": {
+        "before": {
+          "low": "0",
+          "high": "0",
+          "max": "0",
+          "oom": "0",
+          "oom_kill": "0",
+          "oom_group_kill": "0",
+          "sock_throttled": "0"
+        },
+        "after": {
+          "low": "0",
+          "high": "1",
+          "max": "38",
+          "oom": "1",
+          "oom_kill": "1",
+          "oom_group_kill": "0",
+          "sock_throttled": "0"
+        },
+        "exit": -9
+      }
+    },
+    {
+      "label": "game survives the resource tests",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "night actions still resolve after resource pressure",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "trial and execution of player 8",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "night death is broadcast",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "trial and execution of player 6",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "trial and execution of player 7",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "protected match reaches Town victory and postgame",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "player session remains active before shutdown",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "game shuts down normally",
+      "pass": true,
+      "details": "4 needed for trial).\nNomination: #2 Player2 voted for #7 Player7 (2/4 needed for trial).\nNomination: #3 Player3 voted for #7 Player7 (3/4 needed for trial).\nNomination: #5 Player5 voted for #7 Player7 (4/4 needed for trial).\n[CHAT:PUBLIC] #7 Player7: I claim to be Town.\nScene: Defense (Day 4) -> Judgment (Day 4)\nScene: Judgment (Day 4) -> Last Words (Day 4)\n[CHAT:PUBLIC] #7 Player7: These are my last words.\nScene: Last Words (Day 4) -> Game Ended\n[CHAT:POSTGAME] #4 Player4: Good game from the dead player.\nRemoved temporary player account: fearless_p1\nRemoved temporary player account: fearless_p2\nRemoved temporary player account: fearless_p3\nRemoved temporary player account: fearless_p4\nRemoved temporary player account: fearless_p5\nRemoved temporary player account: fearless_p6\nRemoved temporary player account: fearless_p7\nRemoved temporary player account: fearless_p8\nRemoved temporary player account: fearless_p9\nRestored previous /proc settings, resource limits, and cgroup permissions.\n"
+    },
+    {
+      "label": "cleanup terminates remaining player sessions",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "live-player shutdown removes accounts homes and groups",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "unrelated account survives cleanup",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "live-player shutdown restores original proc and resource configuration",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=0,gid=0"
+          },
+          "overrides": {}
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=0,gid=0"
+          },
+          "overrides": {}
+        }
+      }
+    },
+    {
+      "label": "existing-account mode starts normally",
+      "pass": true,
+      "details": "Players: log in to your player account and run /run/fearless-conspiracy/fearless-conspiracy-client /run/fearless-conspiracy/game.sock \"Your name\"\nApplying temporary /proc protection and runtime account limits; prior settings are restored on exit.\nVerified player isolation: {\"uid\": 2001, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2002, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2003, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nFearless Conspiracy lobby setup\nPress Enter to accept a default; Ctrl+C to cancel.\n\nHow many players do you want? (3-9) [3]: Do you want manual phase control? (use advance; disables timers) [yes]: Do you want predictable roles? (assigned in player ID order) [yes]: Allow players from other local Linux accounts to connect? [yes]: \nRoles: #1 Sheriff, #2 Doctor, #3 Mafioso\nStarting a 3-player lobby.\n\nFearless Conspiracy Demo 3 listening on /run/fearless-conspiracy/game.sock; waiting for 3 players\n"
+    },
+    {
+      "label": "overlapping game cannot delete active participants",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "existing-account mode preserves accounts and home data",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "existing-account shutdown preserves nondefault proc and administrator overrides",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            }
+          }
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        }
+      }
+    },
+    {
+      "label": "active slice limits ownership ACL and existing session are restored",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "terminate test starts normally",
+      "pass": true,
+      "details": "Initial player logins: /var/lib/fearless-conspiracy/player-logins.txt (root-only; share each entry individually).\nPlayers: log in to your player account and run /run/fearless-conspiracy/fearless-conspiracy-client /run/fearless-conspiracy/game.sock \"Your name\"\nApplying temporary /proc protection and runtime account limits; prior settings are restored on exit.\nVerified player isolation: {\"uid\": 2001, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2002, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2003, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nFearless Conspiracy lobby setup\nPress Enter to accept a default; Ctrl+C to cancel.\n\nHow many players do you want? (3-9) [3]: Do you want manual phase control? (use advance; disables timers) [yes]: Do you want predictable roles? (assigned in player ID order) [yes]: Allow players from other local Linux accounts to connect? [yes]: \nRoles: #1 Sheriff, #2 Doctor, #3 Mafioso\nStarting a 3-player lobby.\n\nFearless Conspiracy Demo 3 listening on /run/fearless-conspiracy/game.sock; waiting for 3 players\nMatch settings: Demo 3; SCENARIO: predetermined roles; MANUAL: host advances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).\nPlayers: run ./client NAME in separate terminals and enter /ready. All 3 players must be connected and ready to start.\nHost commands: help, status, advance (manual mode), abort, shutdown.\n"
+    },
+    {
+      "label": "terminate cleans accounts homes groups credentials and socket",
+      "pass": true,
+      "details": {
+        "exit": 143,
+        "log": "dvances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).\nPlayers: run ./client NAME in separate terminals and enter /ready. All 3 players must be connected and ready to start.\nHost commands: help, status, advance (manual mode), abort, shutdown.\nRemoved temporary player account: fearless_p1\nRemoved temporary player account: fearless_p2\nRemoved temporary player account: fearless_p3\nRestored previous /proc settings, resource limits, and cgroup permissions.\n"
+      }
+    },
+    {
+      "label": "terminate restores prior isolation settings",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        }
+      }
+    },
+    {
+      "label": "interrupt test starts normally",
+      "pass": true,
+      "details": "Created dedicated player account: fearless_p1\nCreated dedicated player account: fearless_p2\nCreated dedicated player account: fearless_p3\nInitial player logins: /var/lib/fearless-conspiracy/player-logins.txt (root-only; share each entry individually).\nPlayers: log in to your player account and run /run/fearless-conspiracy/fearless-conspiracy-client /run/fearless-conspiracy/game.sock \"Your name\"\nApplying temporary /proc protection and runtime account limits; prior settings are restored on exit.\nVerified player isolation: {\"uid\": 2001, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2002, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2003, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nFearless Conspiracy lobby setup\nPress Enter to accept a default; Ctrl+C to cancel.\n\nHow many players do you want? (3-9) [3]: Do you want manual phase control? (use advance; disables timers) [yes]: Do you want predictable roles? (assigned in player ID order) [yes]: Allow players from other local Linux accounts to connect? [yes]: \nRoles: #1 Sheriff, #2 Doctor, #3 Mafioso\nStarting a 3-player lobby.\n\n"
+    },
+    {
+      "label": "interrupt cleans accounts homes groups credentials and socket",
+      "pass": true,
+      "details": {
+        "exit": 130,
+        "log": "ied player isolation: {\"uid\": 2003, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nFearless Conspiracy lobby setup\nPress Enter to accept a default; Ctrl+C to cancel.\n\nHow many players do you want? (3-9) [3]: Do you want manual phase control? (use advance; disables timers) [yes]: Do you want predictable roles? (assigned in player ID order) [yes]: Allow players from other local Linux accounts to connect? [yes]: \nRoles: #1 Sheriff, #2 Doctor, #3 Mafioso\nStarting a 3-player lobby.\n\nRemoved temporary player account: fearless_p1\nRemoved temporary player account: fearless_p2\nRemoved temporary player account: fearless_p3\nRestored previous /proc settings, resource limits, and cgroup permissions.\n"
+      }
+    },
+    {
+      "label": "interrupt restores prior isolation settings",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        }
+      }
+    },
+    {
+      "label": "hangup test starts normally",
+      "pass": true,
+      "details": "Created dedicated player account: fearless_p1\nCreated dedicated player account: fearless_p2\nCreated dedicated player account: fearless_p3\nInitial player logins: /var/lib/fearless-conspiracy/player-logins.txt (root-only; share each entry individually).\nPlayers: log in to your player account and run /run/fearless-conspiracy/fearless-conspiracy-client /run/fearless-conspiracy/game.sock \"Your name\"\nApplying temporary /proc protection and runtime account limits; prior settings are restored on exit.\nVerified player isolation: {\"uid\": 2001, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2002, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2003, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nFearless Conspiracy lobby setup\nPress Enter to accept a default; Ctrl+C to cancel.\n\nHow many players do you want? (3-9) [3]: Do you want manual phase control? (use advance; disables timers) [yes]: Do you want predictable roles? (assigned in player ID order) [yes]: Allow players from other local Linux accounts to connect? [yes]: \nRoles: #1 Sheriff, #2 Doctor, #3 Mafioso\nStarting a 3-player lobby.\n\nFearless Conspiracy Demo 3 listening on /run/fearless-conspiracy/game.sock; waiting for 3 players\nMatch settings: Demo 3; SCENARIO: predetermined roles; MANUAL: host advances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).\nPlayers: run ./client NAME in separate terminals and enter /ready. All 3 players must be connected and ready to start.\nHost commands: help, status, advance (manual mode), abort, shutdown.\n"
+    },
+    {
+      "label": "hangup cleans accounts homes groups credentials and socket",
+      "pass": true,
+      "details": {
+        "exit": 129,
+        "log": "dvances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).\nPlayers: run ./client NAME in separate terminals and enter /ready. All 3 players must be connected and ready to start.\nHost commands: help, status, advance (manual mode), abort, shutdown.\nRemoved temporary player account: fearless_p1\nRemoved temporary player account: fearless_p2\nRemoved temporary player account: fearless_p3\nRestored previous /proc settings, resource limits, and cgroup permissions.\n"
+      }
+    },
+    {
+      "label": "hangup restores prior isolation settings",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        }
+      }
+    },
+    {
+      "label": "failed game startup cleans provisioned players",
+      "pass": true,
+      "details": {
+        "exit": 1,
+        "log": "-conspiracy-client /run/fearless-conspiracy/game.sock \"Your name\"\nApplying temporary /proc protection and runtime account limits; prior settings are restored on exit.\nVerified player isolation: {\"uid\": 2001, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2002, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nVerified player isolation: {\"uid\": 2003, \"proc_hidden\": true, \"other_cgroups_hidden\": true}\nError: \"unknown option --not-a-game-option\"\nRemoved temporary player account: fearless_p1\nRemoved temporary player account: fearless_p2\nRemoved temporary player account: fearless_p3\nRestored previous /proc settings, resource limits, and cgroup permissions.\n"
+      }
+    },
+    {
+      "label": "failed game startup restores prior isolation settings",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        }
+      }
+    },
+    {
+      "label": "mid-setup failure safely removes temporary players",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "mid-setup failure restores earlier changed slices and proc",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2002.slice.d/50-MemoryMax.conf": {
+              "link": "/results/unrelated-config"
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2002.slice.d/50-MemoryMax.conf": {
+              "link": "/results/unrelated-config"
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        }
+      }
+    },
+    {
+      "label": "forced-termination game starts normally",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "SIGKILL retains a root-only recovery record",
+      "pass": true,
+      "details": null
+    },
+    {
+      "label": "explicit recovery stops orphaned game and removes managed accounts",
+      "pass": true,
+      "details": "Removed temporary player account: fearless_p1\nRemoved temporary player account: fearless_p2\nRemoved temporary player account: fearless_p3\nRestored previous /proc settings, resource limits, and cgroup permissions.\n"
+    },
+    {
+      "label": "SIGKILL recovery restores original settings",
+      "pass": true,
+      "details": {
+        "before": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        },
+        "after": {
+          "proc": {
+            "id": "27",
+            "flags": 2097184,
+            "options": "hidepid=1,gid=2999"
+          },
+          "overrides": {
+            "/run/systemd/system.control/user-2001.slice.d/50-TasksMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a5461736b734d61783d39300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemorySwapMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279537761704d61783d36373130383836340a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryMax.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f72794d61783d3431393433303430300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-MemoryHigh.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4d656d6f7279486967683d3331343537323830300a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUQuota.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a43505551756f74613d36302e3030250a",
+              "mode": 420
+            },
+            "/run/systemd/system.control/user-2001.slice.d/50-CPUWeight.conf": {
+              "data": "23205468697320697320612064726f702d696e20756e69742066696c6520657874656e73696f6e2c206372656174656420766961202273797374656d63746c207365742d70726f7065727479220a23206f7220616e206571756976616c656e74206f7065726174696f6e2e20446f206e6f7420656469742e0a5b536c6963655d0a4350555765696768743d34320a",
+              "mode": 420
+            }
+          }
+        }
+      }
+    }
+  ],
+  "pass": true,
+  "kernel_limits": {
+    "2000": {
+      "cpu.max": "100000 100000",
+      "memory.high": "402653184",
+      "memory.max": "536870912",
+      "memory.swap.max": "0",
+      "pids.max": "128"
+    },
+    "2001": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    },
+    "2002": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    },
+    "2003": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    },
+    "2004": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    },
+    "2005": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    },
+    "2006": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    },
+    "2007": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    },
+    "2008": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    },
+    "2009": {
+      "cpu.max": "25000 100000",
+      "memory.high": "201326592",
+      "memory.max": "268435456",
+      "memory.swap.max": "0",
+      "pids.max": "64"
+    }
+  },
+  "extended_cgroup_acl_supported": false
+}

@@ -1,5 +1,12 @@
 /target/
+/output/
+/tmp/
+.venv/
+__pycache__/
+*.py[cod]
 *.log
-/fearless-conspiracy-*.tgz
-/report/screenshots/private/
+!docs/evidence/**/*.log
+*.tgz
+/docs/screenshots/*.html
+/docs/screenshots/manifest.json
 

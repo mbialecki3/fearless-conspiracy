@@ -2,42 +2,25 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s REPORT.pdf [OUTPUT.tgz]\n' "$0" >&2
+  printf 'Usage: %s REPORT.pdf POSTER.pdf [OUTPUT.tgz]\n' "$0" >&2
   exit 2
 }
-
-[[ $# -ge 1 && $# -le 2 ]] || usage
+[[ $# -ge 2 && $# -le 3 ]] || usage
+project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 report_path="$1"
-output_path="${2:-fearless-conspiracy-submission.tgz}"
-
-[[ -f "$report_path" ]] || {
-  printf 'Report does not exist: %s\n' "$report_path" >&2
-  exit 1
+poster_path="$2"
+output_path="${3:-fearless-conspiracy-submission.tgz}"
+for document in "$report_path" "$poster_path"; do
+  [[ -f "$document" && "${document,,}" == *.pdf ]] || {
+    printf 'A PDF is required: %s\n' "$document" >&2; exit 1;
+  }
+  [[ "$(head -c 5 "$document")" == '%PDF-' ]] || {
+    printf 'Invalid PDF header: %s\n' "$document" >&2; exit 1;
+  }
+done
+[[ "${output_path,,}" == *.tgz && ! -e "$output_path" ]] || {
+  printf 'Output must be a new .tgz path: %s\n' "$output_path" >&2; exit 1;
 }
-[[ "${report_path,,}" == *.pdf ]] || {
-  printf 'Report must have a .pdf extension: %s\n' "$report_path" >&2
-  exit 1
-}
-[[ "${output_path,,}" == *.tgz ]] || {
-  printf 'Output must have a .tgz extension: %s\n' "$output_path" >&2
-  exit 1
-}
-[[ ! -e "$output_path" ]] || {
-  printf 'Refusing to overwrite existing output: %s\n' "$output_path" >&2
-  exit 1
-}
-
-if [[ "$(head -c 5 "$report_path")" != "%PDF-" ]]; then
-  printf 'Report does not begin with a PDF header: %s\n' "$report_path" >&2
-  exit 1
-fi
-
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  printf 'Commit all tracked worktree changes before packaging.\n' >&2
-  git status --short >&2
-  exit 1
-fi
-
 package_root="$(mktemp -d /tmp/fearless-conspiracy-package.XXXXXX)"
 cleanup() {
   case "$package_root" in
@@ -45,24 +28,31 @@ cleanup() {
   esac
 }
 trap cleanup EXIT
-
-git archive --format=tar --prefix=fearless-conspiracy/ HEAD \
-  | tar -xf - -C "$package_root"
-cp -- "$report_path" "$package_root/fearless-conspiracy/Fearless-Conspiracy-Report.pdf"
-
-if find "$package_root/fearless-conspiracy" -type f \
-  \( -iname '*.doc' -o -iname '*.docx' -o -iname '*.odt' -o -iname '*.pages' \) \
-  | grep -q .; then
-  printf 'Word-processing document found; only the PDF report may be submitted.\n' >&2
-  exit 1
+staged="$package_root/fearless-conspiracy"
+mkdir -p "$staged/scripts"
+# Copy the current reviewed sources, including uncommitted fixes. Exclude old
+# submissions, build trees, credentials, and unrelated personal draft files.
+for path in Cargo.toml Cargo.lock rust-toolchain.toml README.md install server client; do
+  cp -- "$project_root/$path" "$staged/"
+done
+cp -R -- "$project_root/src" "$staged/src"
+for script in protected-server.py test-protected-server.py test-server-launcher.py protected-server-guest.py \
+              proc-visibility-guest.py run-proc-visibility-vm.py check.sh smoke-game.sh \
+              package-release.sh package-submission.sh; do
+  cp -- "$project_root/scripts/$script" "$staged/scripts/"
+done
+cp -- "$report_path" "$staged/Fearless-Conspiracy-Report.pdf"
+cp -- "$poster_path" "$staged/Fearless-Conspiracy-Poster.pdf"
+if [[ -d "$project_root/docs/evidence" ]]; then
+  cp -R -- "$project_root/docs/evidence" "$staged/evidence"
 fi
-
-pdf_count="$(find "$package_root/fearless-conspiracy" -type f -iname '*.pdf' | wc -l)"
-[[ "$pdf_count" -eq 1 ]] || {
-  printf 'Expected exactly one PDF, found %s.\n' "$pdf_count" >&2
-  exit 1
-}
-
+pdf_count="$(find "$staged" -type f -iname '*.pdf' | wc -l)"
+[[ "$pdf_count" -eq 2 ]] || { printf 'Expected two PDFs, found %s\n' "$pdf_count" >&2; exit 1; }
+if find "$staged" -type f \( -iname '*.doc' -o -iname '*.docx' -o -iname '*.odt' \) | grep -q .; then
+  printf 'Unexpected word-processing document in submission.\n' >&2; exit 1
+fi
+# Hash the staged content so the exact submitted sources can be identified.
+(cd "$staged" && find . -type f -print0 | sort -z | xargs -0 sha256sum > "$package_root/SHA256SUMS")
+cp -- "$package_root/SHA256SUMS" "$staged/SHA256SUMS"
 tar -czf "$output_path" -C "$package_root" fearless-conspiracy
-tar -tzf "$output_path"
-printf 'Created %s from commit %s\n' "$output_path" "$(git rev-parse --short HEAD)"
+printf 'Created %s with two PDFs and current game sources.\n' "$output_path"

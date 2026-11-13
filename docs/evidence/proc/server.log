@@ -1,0 +1,108 @@
+Fearless Conspiracy Full 9 listening on /tmp/game/game.sock; waiting for 9 players
+Match settings: Full 9; randomized roles; MANUAL: host advances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).
+Players: run ./client NAME in separate terminals and enter /ready. All 9 players must be connected and ready to start.
+Host commands: help, status, advance (manual mode), abort, shutdown.
+#1 Player1 joined the lobby.
+#2 Player2 joined the lobby.
+#3 Player3 joined the lobby.
+#4 Player4 joined the lobby.
+#5 Player5 joined the lobby.
+#6 Player6 joined the lobby.
+#7 Player7 joined the lobby.
+#8 Player8 joined the lobby.
+#9 Player9 joined the lobby.
+Ready update: #1 Player1 is READY (1/9 connected ready).
+Ready update: #1 Player1 is not ready (0/9 connected ready).
+Ready update: #1 Player1 is READY (1/9 connected ready).
+Ready update: #1 Player1 is not ready (0/9 connected ready).
+Ready update: #1 Player1 is READY (1/9 connected ready).
+Ready update: #2 Player2 is READY (2/9 connected ready).
+Ready update: #2 Player2 is not ready (1/9 connected ready).
+Ready update: #2 Player2 is READY (2/9 connected ready).
+Ready update: #2 Player2 is not ready (1/9 connected ready).
+Ready update: #2 Player2 is READY (2/9 connected ready).
+Ready update: #3 Player3 is READY (3/9 connected ready).
+Ready update: #4 Player4 is READY (4/9 connected ready).
+Ready update: #5 Player5 is READY (5/9 connected ready).
+Ready update: #6 Player6 is READY (6/9 connected ready).
+Ready update: #7 Player7 is READY (7/9 connected ready).
+Ready update: #8 Player8 is READY (8/9 connected ready).
+Ready update: #9 Player9 is READY (9/9 connected ready).
+Game started. Player roles:
+  #1 Player1: Lookout
+  #2 Player2: Mafioso
+  #3 Player3: Escort
+  #4 Player4: Jailor
+  #5 Player5: Jester
+  #6 Player6: Framer
+  #7 Player7: Sheriff
+  #8 Player8: Godfather
+  #9 Player9: Doctor
+Current scene: Role Reveal (Day 1)
+Scene: Role Reveal (Day 1) -> Day 1 Introductions (Day 1)
+Scene: Day 1 Introductions (Day 1) -> Night (Day 1)
+[CHAT:MAFIA] #2: secretprobe-hidepid0-1
+[CHAT:MAFIA] #2: secretprobe-hidepid0-1
+[CHAT:MAFIA] #2: secretprobe-hidepid0-1
+[CHAT:MAFIA] #2: secretprobe-hidepid0-1
+[CHAT:MAFIA] #2: secretprobe-hidepid0-1
+[CHAT:MAFIA] #6: secretprobe-hidepid0-2
+[CHAT:MAFIA] #6: secretprobe-hidepid0-2
+[CHAT:MAFIA] #6: secretprobe-hidepid0-2
+[CHAT:MAFIA] #6: secretprobe-hidepid0-2
+[CHAT:MAFIA] #6: secretprobe-hidepid0-2
+[CHAT:MAFIA] #8: secretprobe-hidepid0-3
+[CHAT:MAFIA] #8: secretprobe-hidepid0-3
+[CHAT:MAFIA] #8: secretprobe-hidepid0-3
+[CHAT:MAFIA] #8: secretprobe-hidepid0-3
+[CHAT:MAFIA] #8: secretprobe-hidepid0-3
+[CHAT:JAIL] Jailor: jailprobe-hidepid0-1
+[CHAT:JAIL] Jailor: jailprobe-hidepid0-1
+[CHAT:JAIL] Jailor: jailprobe-hidepid0-1
+[CHAT:JAIL] Jailor: jailprobe-hidepid0-1
+[CHAT:JAIL] Jailor: jailprobe-hidepid0-1
+[CHAT:JAIL] #7: jailprobe-hidepid0-2
+[CHAT:JAIL] #7: jailprobe-hidepid0-2
+[CHAT:JAIL] #7: jailprobe-hidepid0-2
+[CHAT:JAIL] #7: jailprobe-hidepid0-2
+[CHAT:JAIL] #7: jailprobe-hidepid0-2
+[CHAT:MAFIA] #2: secretprobe-hidepid2-1
+[CHAT:MAFIA] #2: secretprobe-hidepid2-1
+[CHAT:MAFIA] #2: secretprobe-hidepid2-1
+[CHAT:MAFIA] #2: secretprobe-hidepid2-1
+[CHAT:MAFIA] #2: secretprobe-hidepid2-1
+[CHAT:MAFIA] #6: secretprobe-hidepid2-2
+[CHAT:MAFIA] #6: secretprobe-hidepid2-2
+[CHAT:MAFIA] #6: secretprobe-hidepid2-2
+[CHAT:MAFIA] #6: secretprobe-hidepid2-2
+[CHAT:MAFIA] #6: secretprobe-hidepid2-2
+[CHAT:MAFIA] #8: secretprobe-hidepid2-3
+[CHAT:MAFIA] #8: secretprobe-hidepid2-3
+[CHAT:MAFIA] #8: secretprobe-hidepid2-3
+[CHAT:MAFIA] #8: secretprobe-hidepid2-3
+[CHAT:MAFIA] #8: secretprobe-hidepid2-3
+[CHAT:JAIL] Jailor: jailprobe-hidepid2-1
+[CHAT:JAIL] Jailor: jailprobe-hidepid2-1
+[CHAT:JAIL] Jailor: jailprobe-hidepid2-1
+[CHAT:JAIL] Jailor: jailprobe-hidepid2-1
+[CHAT:JAIL] Jailor: jailprobe-hidepid2-1
+[CHAT:JAIL] #7: jailprobe-hidepid2-2
+[CHAT:JAIL] #7: jailprobe-hidepid2-2
+[CHAT:JAIL] #7: jailprobe-hidepid2-2
+[CHAT:JAIL] #7: jailprobe-hidepid2-2
+[CHAT:JAIL] #7: jailprobe-hidepid2-2
+[CHAT:MAFIA] #2: secretprobe-restored0-1
+[CHAT:MAFIA] #2: secretprobe-restored0-1
+[CHAT:MAFIA] #2: secretprobe-restored0-1
+[CHAT:MAFIA] #2: secretprobe-restored0-1
+[CHAT:MAFIA] #2: secretprobe-restored0-1
+[CHAT:MAFIA] #6: secretprobe-restored0-2
+[CHAT:MAFIA] #6: secretprobe-restored0-2
+[CHAT:MAFIA] #6: secretprobe-restored0-2
+[CHAT:MAFIA] #6: secretprobe-restored0-2
+[CHAT:MAFIA] #6: secretprobe-restored0-2
+[CHAT:MAFIA] #8: secretprobe-restored0-3
+[CHAT:MAFIA] #8: secretprobe-restored0-3
+[CHAT:MAFIA] #8: secretprobe-restored0-3
+[CHAT:MAFIA] #8: secretprobe-restored0-3
+[CHAT:MAFIA] #8: secretprobe-restored0-3

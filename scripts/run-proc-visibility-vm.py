@@ -94,7 +94,7 @@ def main():
         (initroot / "etc/default/useradd").write_text("CREATE_MAIL_SPOOL=no\n")
         (initroot / "etc/machine-id").write_text("12345678123456781234567812345678\n")
         copy_file("/etc/os-release")
-        for name in ("systemctl", "systemd-run", "setpriv", "setfacl", "sleep", "true", "sudo"):
+        for name in ("systemctl", "systemd-run", "setpriv", "setfacl", "getfacl", "sleep", "true", "sudo", "dirname"):
             binary = Path("/usr/bin") / name
             copy_file(binary)
             copy_libs(binary)
@@ -123,6 +123,7 @@ def main():
             copy_libs(library)
         for name in ("protected-server.py", "test-protected-server.py"):
             copy_file(ROOT / "scripts" / name, "/lab/scripts/" + name)
+        copy_file(ROOT / "server", "/lab/server")
         for name in ("fearless-conspiracy-server", "fearless-conspiracy-client"):
             copy_file(ROOT / "target/debug" / name, "/lab/bin/" + name)
         (initroot / "etc/systemd/system").mkdir(parents=True)

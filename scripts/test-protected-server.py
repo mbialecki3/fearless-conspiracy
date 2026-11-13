@@ -249,5 +249,142 @@ class ProtectedStartupTests(unittest.TestCase):
             self.assertEqual(victim.read_text(), "unchanged")
 
 
+class IsolationRestorationTests(unittest.TestCase):
+    @contextmanager
+    def fixture(self, active=True):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state, overrides, cgroup = root / "state", root / "overrides", root / "cgroup"
+            state.mkdir(mode=0o700)
+            entry_ = entry("player", 2001, 2001)
+            directory = cgroup / "user.slice/user-2001.slice"
+            directory.mkdir(parents=True)
+            original_values = {"cpu.max": "60000 100000", "memory.high": "314572800",
+                               "memory.max": "419430400", "memory.swap.max": "67108864",
+                               "pids.max": "90", "cgroup.max.descendants": "77"}
+            for name, value in original_values.items():
+                (directory / name).write_text(value)
+            stat_ = Path.stat
+            lstat_ = Path.lstat
+
+            def owned(info):
+                return SimpleNamespace(st_uid=0, st_gid=info.st_gid, st_mode=info.st_mode)
+
+            def execute(program, *args, input=None):
+                if program == "systemctl" and "ActiveState" in str(args):
+                    return "active" if active else "inactive"
+                if program == "getfacl":
+                    return "user::rwx\ngroup::r-x\nother::--x"
+                return ""
+
+            record = {"slices": [], "proc": None}
+            with patch.object(launcher, "STATE", state), patch.object(launcher, "OVERRIDES", overrides), \
+                 patch.object(launcher, "CGROUP", cgroup), patch.object(launcher.os, "chown") as chown, \
+                 patch.object(Path, "stat", lambda p, **kw: owned(stat_(p, **kw))), \
+                 patch.object(Path, "lstat", lambda p: owned(lstat_(p))), \
+                 patch.object(launcher, "command", side_effect=execute) as command_:
+                yield record, entry_, directory, overrides / "user-2001.slice.d", state, command_, chown
+
+    def test_existing_overrides_limits_acl_and_unrelated_files_are_preserved(self):
+        with self.fixture() as (record, player, directory, dropins, state, command_, chown):
+            dropins.mkdir(mode=0o755, parents=True)
+            original = "# administrator settings\n[Slice]\nCPUQuota=60%\n"
+            (dropins / "50-CPUQuota.conf").write_text(original)
+            (dropins / "50-CPUQuota.conf").chmod(0o644)
+            (dropins / "50-CPUWeight.conf").write_text("[Slice]\nCPUWeight=42\n")
+            launcher.remember_slice(record, player)
+            for key in launcher.PLAYER_LIMITS:
+                (dropins / f"50-{key}.conf").write_text("game setting")
+                (dropins / f"50-{key}.conf").chmod(0o644)
+            for path in directory.iterdir():
+                path.write_text("changed")
+            self.assertEqual(launcher.restore_isolation(record), [])
+            self.assertEqual((dropins / "50-CPUQuota.conf").read_text(), original)
+            self.assertEqual((dropins / "50-CPUQuota.conf").stat().st_mode & 0o777, 0o644)
+            self.assertEqual((dropins / "50-CPUWeight.conf").read_text(), "[Slice]\nCPUWeight=42\n")
+            self.assertFalse((dropins / "50-MemoryMax.conf").exists())
+            self.assertEqual((directory / "cpu.max").read_text(), "60000 100000")
+            self.assertEqual((directory / "cgroup.max.descendants").read_text(), "77")
+            self.assertTrue(any(call.args[:2] == ("setfacl", "--set-file=-") for call in command_.call_args_list))
+            self.assertTrue(chown.called)
+            self.assertFalse(any("revert" in call.args for call in command_.call_args_list))
+
+    def test_partial_setup_removes_only_new_overrides_and_directory(self):
+        with self.fixture(active=False) as (record, player, directory, dropins, state, command_, chown):
+            launcher.remember_slice(record, player)
+            dropins.mkdir(mode=0o755, parents=True)
+            (dropins / "50-CPUQuota.conf").write_text("partially applied")
+            (dropins / "50-CPUQuota.conf").chmod(0o644)
+            self.assertEqual(launcher.restore_isolation(record), [])
+            self.assertFalse(dropins.exists())
+            self.assertTrue(any(call.args == ("systemctl", "show", "--property=ActiveState", "--value", "user-2001.slice") for call in command_.call_args_list))
+
+    def test_symlink_override_is_rejected_before_modification(self):
+        with self.fixture() as (record, player, directory, dropins, state, command_, chown):
+            dropins.mkdir(mode=0o755, parents=True)
+            target = state / "unrelated"
+            target.write_text("unchanged")
+            (dropins / "50-MemoryMax.conf").symlink_to(target)
+            with self.assertRaisesRegex(RuntimeError, "unsafe runtime override"):
+                launcher.remember_slice(record, player)
+            self.assertEqual(target.read_text(), "unchanged")
+            self.assertEqual(record["slices"], [])
+
+    def test_no_relaxation_if_stopping_the_game_fails(self):
+        session = {"unit": "game.scope", "process": None, "isolation": {}}
+        with patch.object(launcher, "stop_unit", side_effect=RuntimeError("stop failed")), \
+             patch.object(launcher, "restore_isolation") as restore, patch.object(launcher, "cleanup_players") as cleanup:
+            self.assertIn("isolation retained", launcher.finish_session(session, ["p1"])[0])
+            restore.assert_not_called()
+            cleanup.assert_not_called()
+
+    def test_restoration_failure_keeps_recovery_record_for_retry(self):
+        with self.fixture() as (record, player, directory, dropins, state, command_, chown):
+            journal = state / "isolation.json"
+            journal.write_text("saved state")
+            session = {"unit": None, "process": None, "socket": None, "isolation": record}
+            with patch.object(launcher, "restore_isolation", return_value=["restore failed"]):
+                self.assertEqual(launcher.finish_session(session, []), ["restore failed"])
+            self.assertTrue(journal.exists())
+            with patch.object(launcher, "restore_isolation", return_value=[]), patch("builtins.print"):
+                self.assertEqual(launcher.finish_session(session, []), [])
+            self.assertFalse(journal.exists())
+
+    def test_proc_is_kept_restricted_when_resource_restoration_fails(self):
+        with self.fixture() as (record, player, directory, dropins, state, command_, chown):
+            launcher.remember_slice(record, player)
+            record["proc"] = {"id": "1", "flags": 32, "options": "hidepid=0,gid=0"}
+            with patch.object(launcher, "command", side_effect=RuntimeError("systemd unavailable")), \
+                 patch.object(launcher, "remount_proc") as remount:
+                self.assertTrue(launcher.restore_isolation(record))
+                remount.assert_not_called()
+
+    def test_proc_snapshot_normalizes_aliases_and_preserves_other_options(self):
+        info = "1 0 0:1 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw,gid=2999,hidepid=noaccess,subset=pid\n"
+        with patch.object(Path, "read_text", return_value=info):
+            saved = launcher.proc_mount()
+        self.assertEqual(saved["options"], "subset=pid,hidepid=1,gid=2999")
+        libc = Mock()
+        libc.mount.return_value = 0
+        with patch.object(launcher.ctypes, "CDLL", return_value=libc):
+            launcher.remount_proc(saved, saved["options"], "cannot restore")
+        self.assertEqual(libc.mount.call_args.args[-1], b"subset=pid,hidepid=1,gid=2999")
+
+    def test_pending_recovery_completes_before_new_session(self):
+        with self.fixture() as (record, player, directory, dropins, state, command_, chown):
+            pending = {"version": 1, "boot_id": "test-boot", "unit": "old.scope", "socket": "game.sock",
+                       "server_uid": 2000, "players": ["p1"], "slices": [], "proc": None}
+            launcher.save_isolation(pending)
+            calls = []
+            def finish(session, players):
+                calls.append((session["unit"], list(players)))
+                return []
+            with patch.object(launcher, "boot_id", return_value="test-boot"), \
+                 patch.object(launcher, "finish_session", side_effect=finish):
+                with launcher.game_session([]):
+                    self.assertEqual(calls, [("old.scope", ["p1"])])
+            self.assertFalse((state / "isolation.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

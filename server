@@ -4,30 +4,39 @@ set -euo pipefail
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$project_root"
 
-if [[ "${1:-}" == --protected ]]; then
-  shift
-  exec /usr/bin/python3 -I "$project_root/scripts/protected-server.py" "$@"
-fi
-
 socket_path="${FEARLESS_CONSPIRACY_SOCKET:-/tmp/fearless-conspiracy.sock}"
 strict_users=0
 server_args=(--setup)
 
 usage() {
   cat <<'EOF'
-Usage: ./server [options]
-       sudo ./server --protected [--players NUMBER | --player ACCOUNT ...] [-- GAME_OPTIONS]
+Usage: sudo ./server [--players NUMBER | --player ACCOUNT ...] [-- GAME_OPTIONS]
+       ./server --unprotected [options]
+
+Protected startup is the default. It requires sudo, systemd, and cgroup v2
+on a dedicated VM, creates player accounts, and checks process/resource isolation.
+--protected is accepted for compatibility. --unprotected explicitly selects
+local development mode without those OS protections. Modes cannot be combined.
 
 Always asks questions to set up the lobby, including with options or redirected
 input. Press Enter to accept a displayed default; closed input cancels setup.
-The default socket is /tmp/fearless-conspiracy.sock; same-UID clients are allowed.
+The protected socket is /run/fearless-conspiracy/game.sock. In unprotected mode,
+the default is /tmp/fearless-conspiracy.sock and same-UID clients are allowed.
 
-Wrapper options:
+Protected options:
+  --players NUMBER   Create accounts for 3 through 9 players (default: 5).
+  --player ACCOUNT   Use an existing player account; repeat for each player.
+  --server-user NAME Use another dedicated server account.
+  --socket PATH      Use another socket inside /run/fearless-conspiracy.
+  --restore          Finish cleanup from an interrupted game, then exit.
+  -- GAME_OPTIONS    Pass game options such as --manual to the game.
+
+Unprotected wrapper options:
   --socket PATH       Use another socket path.
   --strict-users      Require a different Linux UID for every player.
   --shared-local      Let any local Linux user connect to the game socket.
 
-Game options:
+Game options (after -- in protected mode):
   --setup             Accepted for compatibility; setup is always enabled.
   --players NUMBER    Suggest 3 through 9 players in setup.
   --scenario          Suggest predictable roles in setup.
@@ -39,6 +48,48 @@ Game options:
 EOF
 }
 
+# Select the mode before forwarding options. Values and everything after --
+# stay intact, so a game argument can never silently disable protection.
+mode=protected
+explicit_mode=""
+launch_args=()
+while (( $# )); do
+  case "$1" in
+    --protected|--unprotected)
+      selected_mode="${1#--}"
+      if [[ -n "$explicit_mode" && "$explicit_mode" != "$selected_mode" ]]; then
+        printf 'Cannot combine --protected and --unprotected.\n' >&2
+        exit 2
+      fi
+      mode="$selected_mode"
+      explicit_mode="$selected_mode"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      launch_args+=("$@")
+      break
+      ;;
+    --socket|--players|--player|--server-user|--preset|--duration)
+      [[ $# -ge 2 ]] || { printf '%s requires a value.\n' "$1" >&2; exit 2; }
+      launch_args+=("$1" "$2")
+      shift 2
+      ;;
+    *)
+      launch_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ "$mode" == protected ]]; then
+  exec /usr/bin/python3 -I "$project_root/scripts/protected-server.py" "${launch_args[@]}"
+fi
+
+set -- "${launch_args[@]}"
 while (( $# )); do
   case "$1" in
     --socket)
@@ -53,6 +104,11 @@ while (( $# )); do
     --strict-users)
       strict_users=1
       shift
+      ;;
+    --)
+      shift
+      server_args+=("$@")
+      break
       ;;
     -h|--help)
       usage
@@ -70,7 +126,7 @@ if (( ! strict_users )); then
 fi
 
 if (( EUID == 0 )); then
-  printf 'Use --protected when starting with sudo; the game itself runs without root.\n' >&2
+  printf 'Unprotected mode must run as your normal user. Use sudo ./server for protected play.\n' >&2
   exit 1
 fi
 

@@ -23,6 +23,7 @@ CGROUP = Path("/sys/fs/cgroup")
 RUNTIME = Path("/run/fearless-conspiracy")
 STATE = Path("/var/lib/fearless-conspiracy")
 HOMES = Path("/home")
+OVERRIDES = Path("/run/systemd/system.control")
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 PLAYER_LIMITS = {"CPUQuota": "25%", "MemoryHigh": "192M", "MemoryMax": "256M", "MemorySwapMax": "0", "TasksMax": "64"}
 SERVER_LIMITS = {"CPUQuota": "100%", "MemoryHigh": "384M", "MemoryMax": "512M", "MemorySwapMax": "0", "TasksMax": "128"}
@@ -90,6 +91,159 @@ def stop_unit(unit):
         command("systemctl", "stop", unit)
 
 
+def boot_id():
+    return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+
+
+def save_isolation(record):
+    write_private(STATE / "isolation.json", json.dumps(record, indent=2) + "\n")
+
+
+def read_isolation():
+    path = STATE / "isolation.json"
+    if not path.exists() and not path.is_symlink():
+        return None
+    info = path.lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o077,
+            "unsafe isolation recovery record")
+    record = json.loads(path.read_text())
+    require(record.get("version") == 1, "unsupported isolation recovery record")
+    return record
+
+
+def snapshot_override(path):
+    if not path.exists() and not path.is_symlink():
+        return None
+    info = path.lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022,
+            f"unsafe runtime override: {path}")
+    return {"data": path.read_bytes().hex(), "mode": stat.S_IMODE(info.st_mode),
+            "uid": info.st_uid, "gid": info.st_gid}
+
+
+def remember_slice(record, entry):
+    """Journal the original state before set-property, chmod, or chown."""
+    unit = f"user-{entry.pw_uid}.slice"
+    dropins = OVERRIDES / f"{unit}.d"
+    if dropins.exists() or dropins.is_symlink():
+        info = dropins.lstat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022,
+                f"unsafe runtime override directory: {dropins}")
+    saved = {"unit": unit, "directory_existed": dropins.exists(),
+             "active": command("systemctl", "show", "--property=ActiveState", "--value", unit) == "active",
+             "overrides": {key: snapshot_override(dropins / f"50-{key}.conf") for key in PLAYER_LIMITS},
+             "cgroup": None}
+    path = CGROUP / "user.slice" / unit
+    if path.exists():
+        info = path.stat()
+        require(info.st_uid == 0, f"{path} must be root-owned")
+        saved["cgroup"] = {"uid": info.st_uid, "gid": info.st_gid, "mode": stat.S_IMODE(info.st_mode),
+                           "acl": command("getfacl", "--omit-header", "--numeric", path),
+                           "values": {name: (path / name).read_text().strip() for name in
+                                      ("cpu.max", "memory.high", "memory.max", "memory.swap.max", "pids.max", "cgroup.max.descendants")
+                                      if (path / name).exists()}}
+    record["slices"].append(saved)
+    save_isolation(record)
+
+
+def restore_isolation(record):
+    """Restore only the properties and directory permissions changed by us."""
+    errors = []
+    for saved in reversed(record["slices"]):
+        try:
+            require(re.fullmatch(r"user-[0-9]+\.slice", saved["unit"]), "invalid recovery unit")
+            if not saved["active"]:
+                stop_unit(saved["unit"])
+            dropins = OVERRIDES / f"{saved['unit']}.d"
+            if dropins.exists() or dropins.is_symlink():
+                info = dropins.lstat()
+                require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022,
+                        f"unsafe runtime override directory: {dropins}")
+            for key, original in saved["overrides"].items():
+                require(key in PLAYER_LIMITS, "invalid recovery property")
+                path = dropins / f"50-{key}.conf"
+                snapshot_override(path)  # Reject replaced symlinks or untrusted files.
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    dropins.mkdir(parents=True, exist_ok=True)
+                    write_private(path, bytes.fromhex(original["data"]).decode())
+                    os.chown(path, original["uid"], original["gid"])
+                    path.chmod(original["mode"])
+            if not saved["directory_existed"] and dropins.exists() and not any(dropins.iterdir()):
+                dropins.rmdir()
+        except (RuntimeError, OSError, KeyError, ValueError, subprocess.CalledProcessError) as exc:
+            errors.append(f"{saved['unit']}: {exc}")
+    try:
+        if record["slices"]:
+            command("systemctl", "daemon-reload")
+    except (RuntimeError, OSError, subprocess.CalledProcessError) as exc:
+        errors.append(f"reload resource configuration: {exc}")
+    for saved in record["slices"]:
+        path = CGROUP / "user.slice" / saved["unit"]
+        original = saved["cgroup"]
+        if original is None or not path.exists():
+            continue
+        try:
+            for name, value in original["values"].items():
+                (path / name).write_text(value)
+            os.chown(path, original["uid"], original["gid"])
+            command("setfacl", "--set-file=-", path, input=original["acl"] + "\n")
+            path.chmod(original["mode"])
+            require(all((path / name).read_text().strip() == value for name, value in original["values"].items()),
+                    f"cannot restore kernel resource limits for {saved['unit']}")
+            require(command("getfacl", "--omit-header", "--numeric", path) == original["acl"],
+                    f"cannot restore cgroup permissions for {saved['unit']}")
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as exc:
+            errors.append(f"{saved['unit']}: {exc}")
+    # Do not lift process isolation while resource restoration is incomplete.
+    if not errors and record["proc"] is not None:
+        try:
+            current = proc_mount()
+            require(current["id"] == record["proc"]["id"], "/proc mount changed during the game")
+            remount_proc(record["proc"], record["proc"]["options"], "cannot restore /proc")
+            require(proc_mount() == record["proc"], "restored /proc settings do not match their original values")
+        except (RuntimeError, OSError) as exc:
+            errors.append(str(exc))
+    return errors
+
+
+def finish_session(session, player_names):
+    errors = []
+    # Stop the game before relaxing its isolation, including during recovery.
+    try:
+        if session["unit"]:
+            stop_unit(session["unit"])
+        process = session["process"]
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+    except (RuntimeError, OSError, subprocess.CalledProcessError) as exc:
+        return [f"cannot stop game; isolation retained: {exc}"]
+    try:
+        if session["socket"]:
+            try:
+                info = session["socket"].lstat()
+                if stat.S_ISSOCK(info.st_mode) and info.st_uid == session["server_uid"]:
+                    session["socket"].unlink()
+            except FileNotFoundError:
+                pass
+        if player_names:
+            errors.extend(cleanup_players(player_names))
+    except (RuntimeError, OSError, subprocess.CalledProcessError) as exc:
+        errors.append(str(exc))
+    if session["isolation"] is not None:
+        errors.extend(restore_isolation(session["isolation"]))
+        if not errors:
+            (STATE / "isolation.json").unlink(missing_ok=True)
+            print("Restored previous /proc settings, resource limits, and cgroup permissions.", flush=True)
+    return errors
+
+
 def cleanup_players(names):
     """Delete only recorded player identities, never caller-supplied accounts."""
     errors = []
@@ -154,7 +308,17 @@ def game_session(player_names):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("another protected game is already running") from None
-        session = {"signal": 0, "process": None, "unit": None, "socket": None, "server_uid": None}
+        pending = read_isolation()
+        if pending is not None:
+            same_boot = pending["boot_id"] == boot_id()
+            recovery = {"unit": pending["unit"] if same_boot else None, "process": None,
+                        "socket": RUNTIME / pending["socket"], "server_uid": pending["server_uid"],
+                        "isolation": pending if same_boot else None}
+            errors = finish_session(recovery, pending["players"])
+            require(not errors, "unfinished cleanup; retry sudo ./server --restore: " + "; ".join(errors))
+            (STATE / "isolation.json").unlink(missing_ok=True)
+        session = {"signal": 0, "process": None, "unit": None, "socket": None, "server_uid": None,
+                   "isolation": None}
 
         def interrupted(signum, _frame):
             session["signal"] = signum
@@ -175,29 +339,11 @@ def game_session(player_names):
                 signal.signal(signum, signal.SIG_IGN)
             errors = []
             try:
-                if session["unit"]:
-                    stop_unit(session["unit"])
-                process = session["process"]
-                if process is not None and process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
-                if session["socket"]:
-                    try:
-                        info = session["socket"].lstat()
-                        if stat.S_ISSOCK(info.st_mode) and info.st_uid == session["server_uid"]:
-                            session["socket"].unlink()
-                    except FileNotFoundError:
-                        pass
-                if player_names:
-                    errors = cleanup_players(player_names)
+                errors = finish_session(session, player_names)
             finally:
                 for signum, handler in previous.items():
                     signal.signal(signum, handler)
-            require(not errors, "player cleanup incomplete: " + "; ".join(errors))
+            require(not errors, "cleanup incomplete; retry sudo ./server --restore: " + "; ".join(errors))
 
 
 def provision_accounts(server_name, count, cleanup=None):
@@ -349,7 +495,7 @@ def validate_sessions(players):
             continue  # Process exited during inspection.
 
 
-def restrict_proc():
+def proc_mount():
     mounts = [line.split() for line in Path("/proc/self/mountinfo").read_text().splitlines()]
     mount = next((fields for fields in reversed(mounts) if fields[4] == "/proc"), None)
     require(mount is not None and mount[mount.index("-") + 1] == "proc", "/proc must be a procfs mount")
@@ -360,10 +506,26 @@ def restrict_proc():
               "strictatime": 1 << 24, "lazytime": 1 << 25}
     for option in mount[5].split(","):
         flags |= values.get(option, 0)
+    options = [value for value in mount[mount.index("-") + 3].split(",") if value not in {"rw", "ro"}]
+    settings = dict(value.split("=", 1) if "=" in value else (value, "") for value in options)
+    hidepid = {"off": "0", "noaccess": "1", "invisible": "2", "ptraceable": "4"}.get(
+        settings.get("hidepid", "0"), settings.get("hidepid", "0"))
+    other = sorted(value for value in options if not value.startswith(("hidepid=", "gid=")))
+    return {"id": mount[0], "flags": flags,
+            "options": ",".join([*other, f"hidepid={hidepid}", f"gid={settings.get('gid', '0')}"])}
+
+
+def remount_proc(settings, options, error):
     libc = ctypes.CDLL(None, use_errno=True)
     libc.mount.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_char_p]
-    require(libc.mount(None, b"/proc", None, flags, b"hidepid=2,gid=0") == 0,
-            f"cannot restrict /proc: {os.strerror(ctypes.get_errno())}")
+    require(libc.mount(None, b"/proc", None, settings["flags"], options.encode()) == 0,
+            f"{error}: {os.strerror(ctypes.get_errno())}")
+
+
+def restrict_proc():
+    settings = proc_mount()
+    other = [value for value in settings["options"].split(",") if not value.startswith(("hidepid=", "gid="))]
+    remount_proc(settings, ",".join([*other, "hidepid=2", "gid=0"]), "cannot restrict /proc")
 
 
 def configure_slice(entry, limits):
@@ -454,16 +616,22 @@ def main():
     participants.add_argument("--players", type=int, choices=range(3, 10), help="create dedicated accounts for this many players (default: 5)")
     participants.add_argument("--player", action="append", metavar="ACCOUNT", help="use an existing account instead of automatic provisioning")
     parser.add_argument("--socket", type=Path, default=RUNTIME / "game.sock")
+    parser.add_argument("--restore", action="store_true", help="finish cleanup from an interrupted game without starting another")
     parser.add_argument("game_args", nargs=argparse.REMAINDER, help="game options after --")
     args = parser.parse_args()
-    require(os.geteuid() == 0, "protected startup requires sudo; build the binaries first as your normal user")
+    require(os.geteuid() == 0,
+            "protected startup is the default and requires sudo; build first as your normal user, then run sudo ./server. "
+            "For local development without OS isolation, use ./server --unprotected")
     require(Path("/run/systemd/system").is_dir() and (CGROUP / "cgroup.controllers").exists(),
             "protected startup requires systemd and cgroup v2")
     require({"cpu", "memory", "pids"} <= set((CGROUP / "cgroup.controllers").read_text().split()),
             "the CPU, memory and pids cgroup controllers must be available")
-    for program in ("systemctl", "systemd-run", "setpriv", "setfacl"):
+    for program in ("systemctl", "systemd-run", "setpriv", "setfacl", "getfacl"):
         info = (Path("/usr/bin") / program).stat()
         require(info.st_uid == 0 and not info.st_mode & 0o022, f"install a trusted /usr/bin/{program}")
+    if args.restore:
+        with game_session([]):
+            return 0
     for fd in (1, 2):
         info = os.fstat(fd)
         require(not stat.S_ISREG(info.st_mode) or not info.st_mode & 0o077,
@@ -478,10 +646,10 @@ def main():
     require(client.is_file(), "build both game binaries with cargo build --locked --bins before running sudo")
     socket = args.socket.absolute()
     require(socket.parent == RUNTIME and socket.name not in {".", ".."}, f"the protected socket must be inside {RUNTIME}")
-    require(not socket.exists() and not socket.is_symlink(), f"socket path already exists: {socket}")
     temporary = [] if args.player else [f"fearless_p{number}" for number in range(1, (args.players or 5) + 1)]
     claimed = []
     with game_session(claimed) as session:
+        require(not socket.exists() and not socket.is_symlink(), f"socket path already exists: {socket}")
         if args.player:
             server = account(args.server_user)
             players = [account(name) for name in args.player]
@@ -507,14 +675,22 @@ def main():
         binary = stage_binary(binary, RUNTIME)
         client = stage_binary(client, RUNTIME, "fearless-conspiracy-client")
         print(f'Players: log in to your player account and run {client} {socket} "Your name"', flush=True)
-        print("Applying VM-wide /proc protection and runtime account limits; these remain until reboot.", flush=True)
+        record = {"version": 1, "boot_id": boot_id(), "proc": proc_mount(), "slices": [],
+                  "players": list(claimed), "unit": None, "socket": socket.name, "server_uid": server.pw_uid}
+        save_isolation(record)
+        session["isolation"] = record
+        print("Applying temporary /proc protection and runtime account limits; prior settings are restored on exit.", flush=True)
         restrict_proc()
-        slices = {entry.pw_uid: configure_slice(entry, SERVER_LIMITS if entry == server else PLAYER_LIMITS)
-                  for entry in [server, *players]}
+        slices = {}
+        for entry in [server, *players]:
+            remember_slice(record, entry)
+            slices[entry.pw_uid] = configure_slice(entry, SERVER_LIMITS if entry == server else PLAYER_LIMITS)
         verify_visibility(server, players, slices)
         if session["signal"]:
             return 128 + session["signal"]
         session["unit"] = f"fearless-conspiracy-{os.getpid()}.scope"
+        record["unit"] = session["unit"]
+        save_isolation(record)
         cmd = ["/usr/bin/systemd-run", "--quiet", "--scope", f"--unit={session['unit']}",
                f"--slice=user-{server.pw_uid}.slice", *unprivileged(server, [entry.pw_gid for entry in players]),
                str(binary), str(socket), "--players", str(len(players)), "--shared-local", "--setup",

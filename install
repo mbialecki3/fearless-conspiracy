@@ -60,5 +60,6 @@ cargo build --locked --bins
 
 printf '\nInstallation complete. In your current terminal, run:\n'
 printf '  export PATH=%q:"$PATH"\n' "$cargo_home_path/bin"
-printf '  ./server\n'
-printf 'Players can then run ./client in separate terminals.\n'
+printf '  sudo ./server --players 5\n'
+printf 'Players log into their assigned accounts and run the staged client shown by the server.\n'
+printf 'For same-account development: ./server --unprotected, then ./client in separate terminals.\n'

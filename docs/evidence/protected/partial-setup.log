@@ -1,0 +1,11 @@
+Created dedicated player account: fearless_p1
+Created dedicated player account: fearless_p2
+Created dedicated player account: fearless_p3
+Initial player logins: /var/lib/fearless-conspiracy/player-logins.txt (root-only; share each entry individually).
+Players: log in to your player account and run /run/fearless-conspiracy/fearless-conspiracy-client /run/fearless-conspiracy/game.sock "Your name"
+Applying temporary /proc protection and runtime account limits; prior settings are restored on exit.
+Removed temporary player account: fearless_p1
+Removed temporary player account: fearless_p2
+Removed temporary player account: fearless_p3
+Restored previous /proc settings, resource limits, and cgroup permissions.
+Protected game failed: unsafe runtime override: /run/systemd/system.control/user-2002.slice.d/50-MemoryMax.conf

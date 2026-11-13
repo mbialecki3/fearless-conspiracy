@@ -1,0 +1,82 @@
+[IPC] Welcome { version: 1, peer_id: 12, text: "connected as IPC peer 12" }
+[LOBBY] Match settings: Full 9; SCENARIO: predetermined roles; MANUAL: host advances phases; timers disabled. Distinct Linux UIDs required. SHARED LOCAL: the socket permits connections from any local user. Phase durations: role-reveal=10s, day-one=30s, night=60s, dawn=10s, discussion=90s, nominations=60s, defense=30s, judgment=20s, last-words=15s (inactive in manual mode).
+[PRIVATE_SYSTEM] You are #9 Player9. Kernel credentials: uid=2009, pid=689. Type /ready when prepared.
+[LOBBY] #9 Player9 joined the lobby.
+[PUBLIC_SYSTEM] #1 is ready.
+[PUBLIC_SYSTEM] #2 is ready.
+[PUBLIC_SYSTEM] #3 is ready.
+[PUBLIC_SYSTEM] #4 is ready.
+[PUBLIC_SYSTEM] #5 is ready.
+[PUBLIC_SYSTEM] #6 is ready.
+[PUBLIC_SYSTEM] #7 is ready.
+[PUBLIC_SYSTEM] #8 is ready.
+[PUBLIC_SYSTEM] #9 is ready.
+[OK] Ready status confirmed: ready.
+[PRIVATE] You are the Jester (Neutral). To learn how your role works and see its commands, enter: /help Jester
+[PUBLIC_SYSTEM] [phase 2 · DayOne] Day 1 introductions have begun. No trial is held today.
+[PUBLIC_SYSTEM] [phase 3 · Night] Night 1 has begun.
+[PRIVATE_SYSTEM] Night commands for your Jester role: no ordinary night action. Basic commands: /players to find IDs, /role, /help Jester, and /will set TEXT.
+[PUBLIC_SYSTEM] Nobody died during the night.
+[PUBLIC_SYSTEM] [phase 5 · Discussion] Discussion has begun.
+[PUBLIC] #1 Player1: My investigation found player 7 suspicious.
+[PUBLIC_SYSTEM] [phase 6 · Nominations] Nominations are open.
+[PRIVATE_SYSTEM] Nominations are open. Commands: /players to find IDs, /vote ID, /unvote, plain text or /say MESSAGE, and /whisper ID MESSAGE.
+[PUBLIC_SYSTEM] #1 nominated #8 (1/5).
+[PUBLIC_SYSTEM] #2 nominated #8 (2/5).
+[PUBLIC_SYSTEM] #3 nominated #8 (3/5).
+[PUBLIC_SYSTEM] #4 nominated #8 (4/5).
+[PUBLIC_SYSTEM] #5 nominated #8 (5/5).
+[PUBLIC_SYSTEM] [phase 7 · Defense] #8 is on trial and may now speak in defense.
+[PUBLIC] #8 Player8: I claim to be Town.
+[PUBLIC_SYSTEM] [phase 8 · Judgment] Judgment voting is open; the accused cannot vote.
+[PRIVATE_SYSTEM] Judgment voting is open. Commands: /guilty, /innocent, or /abstain. Use /players to review player IDs.
+[PRIVATE_SYSTEM] Judgment choice set to guilty.
+[PUBLIC_SYSTEM] Judgment votes: #1: guilty, #2: guilty, #3: guilty, #4: guilty, #5: guilty, #6: guilty, #7: guilty, #9: guilty. Totals: 8 guilty, 0 innocent. Verdict: Convicted.
+[PUBLIC_SYSTEM] [phase 9 · LastWords] #8 may speak their last words.
+[PUBLIC] #8 Player8: These are my last words.
+[PUBLIC_SYSTEM] #8 Player8 was publicly executed. Role: Framer. Will: I claimed Town, but I was the Framer.
+[PRIVATE_SYSTEM] Night commands for your Jester role: no ordinary night action. Basic commands: /players to find IDs, /role, /help Jester, and /will set TEXT.
+[PUBLIC_SYSTEM] [phase 10 · Night] The public execution is complete. Night has begun.
+[PUBLIC_SYSTEM] #4 Player4 died. Causes: {Mafia}. Role: Escort. Will: (empty)
+[PUBLIC_SYSTEM] [phase 12 · Discussion] Discussion has begun.
+[PUBLIC] #1 Player1: My investigation found player 7 suspicious.
+[PUBLIC_SYSTEM] [phase 13 · Nominations] Nominations are open.
+[PRIVATE_SYSTEM] Nominations are open. Commands: /players to find IDs, /vote ID, /unvote, plain text or /say MESSAGE, and /whisper ID MESSAGE.
+[PUBLIC_SYSTEM] #1 nominated #6 (1/4).
+[PUBLIC_SYSTEM] #2 nominated #6 (2/4).
+[PUBLIC_SYSTEM] #3 nominated #6 (3/4).
+[PUBLIC_SYSTEM] #5 nominated #6 (4/4).
+[PUBLIC_SYSTEM] [phase 14 · Defense] #6 is on trial and may now speak in defense.
+[PUBLIC] #6 Player6: I claim to be Town.
+[PUBLIC_SYSTEM] [phase 15 · Judgment] Judgment voting is open; the accused cannot vote.
+[PRIVATE_SYSTEM] Judgment voting is open. Commands: /guilty, /innocent, or /abstain. Use /players to review player IDs.
+[PRIVATE_SYSTEM] Judgment choice set to guilty.
+[PUBLIC_SYSTEM] Judgment votes: #1: guilty, #2: guilty, #3: guilty, #5: guilty, #7: guilty, #9: guilty. Totals: 6 guilty, 0 innocent. Verdict: Convicted.
+[PUBLIC_SYSTEM] [phase 16 · LastWords] #6 may speak their last words.
+[PUBLIC] #6 Player6: These are my last words.
+[PUBLIC_SYSTEM] #6 Player6 was publicly executed. Role: Godfather. Will: (empty)
+[PRIVATE_SYSTEM] Night commands for your Jester role: no ordinary night action. Basic commands: /players to find IDs, /role, /help Jester, and /will set TEXT.
+[PUBLIC_SYSTEM] [phase 17 · Night] The public execution is complete. Night has begun.
+[PUBLIC_SYSTEM] Nobody died during the night.
+[PUBLIC_SYSTEM] [phase 19 · Discussion] Discussion has begun.
+[PUBLIC] #1 Player1: My investigation found player 7 suspicious.
+[PUBLIC_SYSTEM] [phase 20 · Nominations] Nominations are open.
+[PRIVATE_SYSTEM] Nominations are open. Commands: /players to find IDs, /vote ID, /unvote, plain text or /say MESSAGE, and /whisper ID MESSAGE.
+[PUBLIC_SYSTEM] #1 nominated #7 (1/4).
+[PUBLIC_SYSTEM] #2 nominated #7 (2/4).
+[PUBLIC_SYSTEM] #3 nominated #7 (3/4).
+[PUBLIC_SYSTEM] #5 nominated #7 (4/4).
+[PUBLIC_SYSTEM] [phase 21 · Defense] #7 is on trial and may now speak in defense.
+[PUBLIC] #7 Player7: I claim to be Town.
+[PUBLIC_SYSTEM] [phase 22 · Judgment] Judgment voting is open; the accused cannot vote.
+[PRIVATE_SYSTEM] Judgment voting is open. Commands: /guilty, /innocent, or /abstain. Use /players to review player IDs.
+[PRIVATE_SYSTEM] Judgment choice set to guilty.
+[PUBLIC_SYSTEM] Judgment votes: #1: guilty, #2: guilty, #3: guilty, #5: guilty, #9: guilty. Totals: 5 guilty, 0 innocent. Verdict: Convicted.
+[PUBLIC_SYSTEM] [phase 23 · LastWords] #7 may speak their last words.
+[PUBLIC] #7 Player7: These are my last words.
+[PUBLIC_SYSTEM] #7 Player7 was publicly executed. Role: Godfather. Will: (empty)
+[PUBLIC_SYSTEM] Final faction result: TownWin. #1 Player1: original=Sheriff, current=Sheriff, outcome=Win; #2 Player2: original=Doctor, current=Doctor, outcome=Win; #3 Player3: original=Lookout, current=Lookout, outcome=Win; #4 Player4: original=Escort, current=Escort, outcome=Win; #5 Player5: original=Jailor, current=Jailor, outcome=Win; #6 Player6: original=Godfather, current=Godfather, outcome=Loss; #7 Player7: original=Mafioso, current=Godfather, outcome=Loss; #8 Player8: original=Framer, current=Framer, outcome=Loss; #9 Player9: original=Jester, current=Jester, outcome=Loss
+[PUBLIC_SYSTEM] Postgame: everyone may chat using /say or bare text. Read commands remain available; gameplay is frozen. Use /quit to leave.
+[POSTGAME] #4 Player4: Good game from the dead player.
+[CLOSED] host shutdown
+[IPC CLOSED] transport disconnected
