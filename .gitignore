@@ -5,8 +5,7 @@
 __pycache__/
 *.py[cod]
 *.log
-!docs/evidence/**/*.log
 *.tgz
-/docs/screenshots/*.html
-/docs/screenshots/manifest.json
+*.pdf
+/submission/
 

@@ -1,6 +1,0 @@
-{
-  "command": "./server --players 5",
-  "exit": 1,
-  "message": "Protected game failed: protected startup is the default and requires sudo; build first as your normal user, then run sudo ./server. For local development without OS isolation, use ./server --unprotected",
-  "refused_unprivileged_start_without_fallback": true
-}
